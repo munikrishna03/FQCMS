@@ -2,3 +2,5 @@ streamlit
 bcrypt
 plotly
 pandas
+cloudinary
+Pillow
