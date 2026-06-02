@@ -4,213 +4,140 @@
 # ============================================================
 
 import streamlit as st
-from database.connection import init_database
+from database.connection import init_database, get_connection
 
-# ── Page Configuration ─────────────────────────────────────
 st.set_page_config(
     page_title="FQCMS - Fruit Quality Claim System",
     page_icon="🍋",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# ── Initialise Database on first run ───────────────────────
 init_database()
 
 # ── Custom CSS ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Google Font */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 * { font-family: 'Inter', sans-serif; }
-
-/* Hide default Streamlit elements */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
-.stDeployButton {display:none;}
-
-/* Dark background */
 .stApp {
     background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 50%, #0f1117 100%);
-    min-height: 100vh;
 }
-
-/* Login card */
-.login-card {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 16px;
-    padding: 40px;
-    backdrop-filter: blur(10px);
-}
-
-/* Logo area */
-.logo-area {
-    text-align: center;
-    padding: 20px 0 30px 0;
-}
-
-.logo-title {
-    font-size: 28px;
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0;
-}
-
-.logo-subtitle {
-    font-size: 14px;
-    color: #8892a4;
-    margin: 4px 0 0 0;
-}
-
-.logo-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-}
-
-/* Input fields */
-.stTextInput > div > div > input {
-    background: rgba(255,255,255,0.07) !important;
-    border: 1px solid rgba(255,255,255,0.15) !important;
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
     border-radius: 8px !important;
     color: #ffffff !important;
-    padding: 12px 16px !important;
-    font-size: 14px !important;
 }
-
-.stTextInput > div > div > input:focus {
-    border-color: #4f8ef7 !important;
-    box-shadow: 0 0 0 2px rgba(79,142,247,0.2) !important;
-}
-
-.stTextInput label {
+.stTextInput label, .stTextArea label,
+.stSelectbox label, .stDateInput label,
+.stNumberInput label {
     color: #8892a4 !important;
     font-size: 13px !important;
     font-weight: 500 !important;
 }
-
-/* Login button */
 .stButton > button {
-    width: 100%;
     background: linear-gradient(135deg, #4f8ef7 0%, #7c3aed 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 12px 24px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 8px;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
 }
-
 .stButton > button:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 25px rgba(79,142,247,0.4);
 }
-
-/* Error / success messages */
-.stAlert {
-    border-radius: 8px !important;
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background: #12151f !important;
+    border-right: 1px solid rgba(255,255,255,0.08) !important;
 }
-
-/* Divider */
-.divider {
-    border: none;
-    border-top: 1px solid rgba(255,255,255,0.08);
-    margin: 24px 0;
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: #8892a4 !important;
+    width: 100%;
+    text-align: left !important;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    margin-bottom: 4px;
 }
-
-/* Role badges */
-.role-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    margin: 2px;
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(79,142,247,0.1) !important;
+    color: #ffffff !important;
+    border-color: #4f8ef7 !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
-
-.badge-admin    { background:#ef444420; color:#ef4444; border:1px solid #ef444440; }
-.badge-manager  { background:#f59e0b20; color:#f59e0b; border:1px solid #f59e0b40; }
-.badge-exec     { background:#10b98120; color:#10b981; border:1px solid #10b98140; }
-.badge-customer { background:#4f8ef720; color:#4f8ef7; border:1px solid #4f8ef740; }
-
-/* Demo credentials box */
-.demo-box {
+/* Section headers */
+.section-header {
     background: rgba(79,142,247,0.08);
-    border: 1px solid rgba(79,142,247,0.2);
-    border-radius: 10px;
-    padding: 16px;
-    margin-top: 16px;
-}
-
-.demo-title {
+    border-left: 4px solid #4f8ef7;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 16px;
+    margin: 24px 0 16px 0;
     color: #4f8ef7;
-    font-size: 12px;
     font-weight: 600;
+    font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 10px;
 }
-
-.demo-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 12px;
-    color: #8892a4;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+/* Ticket success */
+.ticket-success {
+    background: linear-gradient(135deg, #10b98115, #059f4615);
+    border: 2px solid #10b981;
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    margin: 24px 0;
 }
-
-.demo-row:last-child { border-bottom: none; }
-.demo-user { color: #ffffff; font-weight: 500; }
+.ticket-number {
+    font-size: 36px;
+    font-weight: 700;
+    color: #10b981;
+    letter-spacing: 2px;
+    margin: 12px 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
+# ── Session State ───────────────────────────────────────────
+if "logged_in"  not in st.session_state:
+    st.session_state.logged_in  = False
+if "user"       not in st.session_state:
+    st.session_state.user       = None
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "dashboard"
+if "claim_submitted" not in st.session_state:
+    st.session_state.claim_submitted = False
 
-# ── Session State Initialisation ───────────────────────────
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "user" not in st.session_state:
-    st.session_state.user = None
-if "role" not in st.session_state:
-    st.session_state.role = None
 
+# ══════════════════════════════════════════════════════════
+# AUTH FUNCTIONS
+# ══════════════════════════════════════════════════════════
 
 def login_user(username, password):
-    """
-    Validates credentials against the database.
-    Returns user dict on success, None on failure.
-    """
     import bcrypt
-    from database.connection import get_connection
-
     if not username or not password:
         return None, "Please enter both username and password."
-
     try:
         conn = get_connection()
-        cursor = conn.cursor()
-        row = cursor.execute("""
+        row  = conn.execute("""
             SELECT u.id, u.username, u.full_name, u.email,
                    u.password_hash, u.is_active, r.name as role_name
-            FROM users u
-            JOIN roles r ON u.role_id = r.id
+            FROM users u JOIN roles r ON u.role_id = r.id
             WHERE u.username = ?
         """, (username.strip(),)).fetchone()
         conn.close()
-
         if not row:
             return None, "Invalid username or password."
-
         if not row["is_active"]:
-            return None, "Your account has been disabled. Contact admin."
-
+            return None, "Account disabled. Contact admin."
         if bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
-            # Update last login time
             conn2 = get_connection()
             conn2.execute(
                 "UPDATE users SET last_login_at = datetime('now') WHERE id = ?",
@@ -218,44 +145,18 @@ def login_user(username, password):
             )
             conn2.commit()
             conn2.close()
-
             return dict(row), None
-        else:
-            return None, "Invalid username or password."
-
+        return None, "Invalid username or password."
     except Exception as e:
         return None, f"Login error: {str(e)}"
 
 
-def show_dashboard(user):
-    """
-    Routes user to their role-based dashboard after login.
-    """
+# ══════════════════════════════════════════════════════════
+# SIDEBAR NAVIGATION
+# ══════════════════════════════════════════════════════════
+
+def show_sidebar(user):
     role = user["role_name"]
-
-    # ── Top Navigation Bar ──────────────────────────────────
-    col1, col2, col3 = st.columns([1, 3, 1])
-    with col1:
-        st.markdown("### 🍋 FQCMS")
-    with col2:
-        st.markdown(f"""
-        <div style='text-align:center; padding-top:8px;'>
-            <span style='color:#8892a4; font-size:13px;'>Welcome back,</span>
-            <span style='color:#ffffff; font-weight:600; font-size:15px;'>
-                &nbsp;{user['full_name']}
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        if st.button("🚪 Logout", key="logout_btn"):
-            st.session_state.logged_in = False
-            st.session_state.user = None
-            st.session_state.role = None
-            st.rerun()
-
-    st.divider()
-
-    # ── Role Based Welcome ──────────────────────────────────
     role_colors = {
         "Admin":             "#ef4444",
         "Quality Manager":   "#f59e0b",
@@ -264,207 +165,567 @@ def show_dashboard(user):
     }
     color = role_colors.get(role, "#ffffff")
 
+    with st.sidebar:
+        # Logo
+        st.markdown(f"""
+        <div style='padding:16px 8px 8px 8px; text-align:center;'>
+            <div style='font-size:32px;'>🍋</div>
+            <div style='color:#ffffff; font-weight:700;
+                        font-size:18px; margin-top:4px;'>FQCMS</div>
+            <div style='color:#8892a4; font-size:11px;'>
+                Fruit Quality Claims</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # User info
+        st.markdown(f"""
+        <div style='padding:8px; background:rgba(255,255,255,0.04);
+                    border-radius:8px; margin-bottom:12px;'>
+            <div style='color:#ffffff; font-weight:600;
+                        font-size:13px;'>👤 {user['full_name']}</div>
+            <div style='color:{color}; font-size:11px;
+                        margin-top:2px;'>● {role}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Navigation
+        st.markdown("<div style='color:#8892a4; font-size:11px; "
+                    "text-transform:uppercase; letter-spacing:1px; "
+                    "padding:4px 0; font-weight:600;'>Navigation</div>",
+                    unsafe_allow_html=True)
+
+        if st.button("🏠  Home Dashboard", key="nav_home"):
+            st.session_state.current_page    = "dashboard"
+            st.session_state.claim_submitted = False
+            st.rerun()
+
+        if st.button("📋  Submit a Claim", key="nav_claim"):
+            st.session_state.current_page    = "claim_portal"
+            st.session_state.claim_submitted = False
+            st.rerun()
+
+        if role in ["Admin", "Quality Manager", "Quality Executive"]:
+            if st.button("🎫  Helpdesk Board", key="nav_helpdesk"):
+                st.session_state.current_page = "helpdesk"
+                st.rerun()
+
+        if role in ["Admin", "Quality Executive"]:
+            if st.button("🔬  Investigations", key="nav_invest"):
+                st.session_state.current_page = "investigations"
+                st.rerun()
+
+        if role in ["Admin", "Quality Manager", "Quality Executive"]:
+            if st.button("💰  Settlements", key="nav_settle"):
+                st.session_state.current_page = "settlements"
+                st.rerun()
+
+        if role in ["Admin", "Quality Manager"]:
+            if st.button("📊  Dashboard", key="nav_dash"):
+                st.session_state.current_page = "mgmt_dashboard"
+                st.rerun()
+
+        if role == "Admin":
+            if st.button("⚙️  Admin Settings", key="nav_admin"):
+                st.session_state.current_page = "admin"
+                st.rerun()
+
+        st.divider()
+
+        if st.button("🚪  Logout", key="nav_logout"):
+            st.session_state.logged_in    = False
+            st.session_state.user         = None
+            st.session_state.current_page = "dashboard"
+            st.rerun()
+
+
+# ══════════════════════════════════════════════════════════
+# HOME DASHBOARD PAGE
+# ══════════════════════════════════════════════════════════
+
+def show_dashboard(user):
+    role = user["role_name"]
+    role_colors = {
+        "Admin":             "#ef4444",
+        "Quality Manager":   "#f59e0b",
+        "Quality Executive": "#10b981",
+        "Customer":          "#4f8ef7",
+    }
+    color = role_colors.get(role, "#ffffff")
+
+    # Header
     st.markdown(f"""
-    <div style='
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-left: 4px solid {color};
-        border-radius: 12px;
-        padding: 24px 28px;
-        margin-bottom: 24px;
-    '>
+    <div style='background:rgba(255,255,255,0.03);
+                border:1px solid rgba(255,255,255,0.08);
+                border-left:4px solid {color};
+                border-radius:12px; padding:24px 28px;
+                margin-bottom:24px;'>
         <h2 style='color:#ffffff; margin:0 0 6px 0;'>
             Good day, {user['full_name']}! 👋
         </h2>
         <p style='color:#8892a4; margin:0; font-size:14px;'>
-            You are logged in as
+            Logged in as
             <span style='color:{color}; font-weight:600;'>{role}</span>
             &nbsp;·&nbsp; {user['email']}
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Quick Stats ─────────────────────────────────────────
-    from database.connection import get_connection
-    conn = get_connection()
-
-    total   = conn.execute("SELECT COUNT(*) FROM claims").fetchone()[0]
-    open_c  = conn.execute(
+    # KPI Cards
+    conn   = get_connection()
+    total  = conn.execute("SELECT COUNT(*) FROM claims").fetchone()[0]
+    open_c = conn.execute(
         "SELECT COUNT(*) FROM claims WHERE status NOT IN ('Resolved','Closed')"
     ).fetchone()[0]
-    closed  = conn.execute(
+    closed = conn.execute(
         "SELECT COUNT(*) FROM claims WHERE status IN ('Resolved','Closed')"
     ).fetchone()[0]
     conn.close()
 
     c1, c2, c3, c4 = st.columns(4)
-    metrics = [
+    for col, label, value, clr in [
         (c1, "📋 Total Claims",  total,  "#4f8ef7"),
         (c2, "🔴 Open Claims",   open_c, "#ef4444"),
         (c3, "✅ Closed Claims", closed, "#10b981"),
-        (c4, "📊 Modules",       "7",    "#f59e0b"),
-    ]
-    for col, label, value, color in metrics:
+        (c4, "📦 Modules",       "7",    "#f59e0b"),
+    ]:
         with col:
             st.markdown(f"""
-            <div style='
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-top: 3px solid {color};
-                border-radius: 10px;
-                padding: 20px;
-                text-align: center;
-            '>
-                <div style='font-size:28px; font-weight:700; color:{color};'>
-                    {value}
-                </div>
-                <div style='font-size:12px; color:#8892a4; margin-top:4px;'>
-                    {label}
-                </div>
+            <div style='background:rgba(255,255,255,0.04);
+                        border:1px solid rgba(255,255,255,0.08);
+                        border-top:3px solid {clr};
+                        border-radius:10px; padding:20px;
+                        text-align:center;'>
+                <div style='font-size:28px; font-weight:700;
+                            color:{clr};'>{value}</div>
+                <div style='font-size:12px; color:#8892a4;
+                            margin-top:4px;'>{label}</div>
             </div>
             """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Navigation Menu ─────────────────────────────────────
     st.markdown("""
-    <h4 style='color:#ffffff; margin-bottom:16px;'>📌 Quick Navigation</h4>
+    <h4 style='color:#ffffff; margin-bottom:16px;'>
+        📌 Quick Navigation
+    </h4>
     """, unsafe_allow_html=True)
 
-    # Menu items based on role
-    all_menus = {
-        "Admin": [
-            ("📋", "Submit a Claim",       "For testing the customer portal"),
-            ("🎫", "Helpdesk Board",        "Manage all quality tickets"),
-            ("🔬", "Investigations",        "Investigate open claims"),
-            ("💰", "Settlements",          "Process claim settlements"),
-            ("📊", "Dashboard",            "Management KPI reports"),
-            ("⚙️", "Admin Settings",       "Users, roles, products"),
-        ],
-        "Quality Manager": [
-            ("🎫", "Helpdesk Board",        "View and manage tickets"),
-            ("💰", "Settlements",          "Approve or reject settlements"),
-            ("📊", "Dashboard",            "KPI reports and analytics"),
-        ],
-        "Quality Executive": [
-            ("🎫", "Helpdesk Board",        "View assigned tickets"),
-            ("🔬", "Investigations",        "Investigate claims"),
-            ("💰", "Settlements",          "Submit settlement proposals"),
-        ],
-        "Customer": [
-            ("📋", "Submit a Claim",       "Lodge a new quality complaint"),
-            ("🔍", "Track My Claims",      "View status of your claims"),
-        ],
-    }
-
-    menus = all_menus.get(role, [])
-    cols = st.columns(3)
-    for i, (icon, title, desc) in enumerate(menus):
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div style='
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
-                padding: 18px;
-                margin-bottom: 12px;
-                cursor: pointer;
-                transition: all 0.2s;
-            '>
-                <div style='font-size:24px;'>{icon}</div>
-                <div style='color:#ffffff; font-weight:600;
-                            font-size:14px; margin-top:8px;'>
-                    {title}
-                </div>
-                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
-                    {desc}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
- # ── Module Navigation Links ─────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.info("🚧 More modules coming soon. Use the left sidebar to navigate between pages.")
-
-    st.markdown("""
-    <div style='
-        background: rgba(79,142,247,0.08);
-        border: 1px solid rgba(79,142,247,0.2);
-        border-radius: 10px;
-        padding: 16px 20px;
-        margin-top: 12px;
-    '>
-        <div style='color:#4f8ef7; font-weight:600; margin-bottom:8px;'>
-            📌 How to Navigate
+    # Quick action cards
+    qa1, qa2, qa3 = st.columns(3)
+    with qa1:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.04);
+                    border:1px solid rgba(255,255,255,0.08);
+                    border-radius:10px; padding:18px;'>
+            <div style='font-size:24px;'>📋</div>
+            <div style='color:#ffffff; font-weight:600;
+                        font-size:14px; margin-top:8px;'>Submit a Claim</div>
+            <div style='color:#8892a4; font-size:12px;
+                        margin-top:4px;'>Lodge a quality complaint</div>
         </div>
-        <div style='color:#8892a4; font-size:13px;'>
-            👈 Use the <strong style='color:#fff;'>left sidebar</strong>
-            to access all modules:<br><br>
-            📋 Claim Portal &nbsp;·&nbsp;
-            🎫 Helpdesk &nbsp;·&nbsp;
-            🔬 Investigations &nbsp;·&nbsp;
-            💰 Settlements &nbsp;·&nbsp;
-            📊 Dashboard
+        """, unsafe_allow_html=True)
+        if st.button("Open →", key="qa_claim"):
+            st.session_state.current_page    = "claim_portal"
+            st.session_state.claim_submitted = False
+            st.rerun()
+
+    with qa2:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.04);
+                    border:1px solid rgba(255,255,255,0.08);
+                    border-radius:10px; padding:18px;'>
+            <div style='font-size:24px;'>🎫</div>
+            <div style='color:#ffffff; font-weight:600;
+                        font-size:14px; margin-top:8px;'>Helpdesk Board</div>
+            <div style='color:#8892a4; font-size:12px;
+                        margin-top:4px;'>Manage all tickets</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Open →", key="qa_helpdesk"):
+            st.session_state.current_page = "helpdesk"
+            st.rerun()
+
+    with qa3:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.04);
+                    border:1px solid rgba(255,255,255,0.08);
+                    border-radius:10px; padding:18px;'>
+            <div style='font-size:24px;'>📊</div>
+            <div style='color:#ffffff; font-weight:600;
+                        font-size:14px; margin-top:8px;'>Dashboard</div>
+            <div style='color:#8892a4; font-size:12px;
+                        margin-top:4px;'>KPI reports & analytics</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Open →", key="qa_dash"):
+            st.session_state.current_page = "mgmt_dashboard"
+            st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.info("🚧 More modules are being built. Use the left sidebar to navigate.")
+
+
+# ══════════════════════════════════════════════════════════
+# CLAIM PORTAL PAGE
+# ══════════════════════════════════════════════════════════
+
+def get_products():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, name FROM products WHERE is_active=1 ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return rows
+
+def get_defects(product_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, name FROM defect_types WHERE product_id=? AND is_active=1",
+        (product_id,)
+    ).fetchall()
+    conn.close()
+    return rows
+
+def get_customers():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, customer_code, customer_name FROM customers "
+        "WHERE is_active=1 ORDER BY customer_name"
+    ).fetchall()
+    conn.close()
+    return rows
+
+def generate_ticket_number():
+    conn = get_connection()
+    conn.execute(
+        "UPDATE ticket_counter SET last_value = last_value + 1 WHERE id = 1"
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT last_value FROM ticket_counter WHERE id = 1"
+    ).fetchone()
+    conn.close()
+    return f"FRUIT-{row['last_value']:06d}"
+
+def submit_claim(data):
+    from datetime import datetime, timedelta
+    conn    = get_connection()
+    cursor  = conn.cursor()
+    ticket  = generate_ticket_number()
+    sla_map = {"Critical": (2, 24), "Major": (4, 48), "Minor": (8, 72)}
+    rh, resh = sla_map[data["priority"]]
+    now      = datetime.now()
+    r_due    = (now + timedelta(hours=rh)).strftime("%Y-%m-%d %H:%M:%S")
+    res_due  = (now + timedelta(hours=resh)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        cursor.execute("""
+            INSERT INTO claims (
+                ticket_number, customer_id, product_id, defect_type_id,
+                invoice_number, invoice_date, quantity_received,
+                quantity_claimed, quantity_unit, defect_description,
+                priority, status, sla_response_due_at, sla_resolution_due_at,
+                submitted_by_name, submitted_by_email, submitted_by_mobile
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'New',?,?,?,?,?)
+        """, (
+            ticket, data["customer_id"], data["product_id"],
+            data["defect_type_id"], data["invoice_number"],
+            data["invoice_date"], data["quantity_received"],
+            data["quantity_claimed"], data["quantity_unit"],
+            data["defect_description"], data["priority"],
+            r_due, res_due,
+            data["contact_name"], data["email"], data["mobile"],
+        ))
+        cid = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO sla_tracking (claim_id,priority,"
+            "response_due_at,resolution_due_at) VALUES (?,?,?,?)",
+            (cid, data["priority"], r_due, res_due)
+        )
+        cursor.execute(
+            "INSERT INTO audit_logs (claim_id,action,entity_type,"
+            "entity_id,new_value) VALUES (?,'CLAIM_CREATED','claim',?,?)",
+            (cid, cid, ticket)
+        )
+        conn.commit()
+        conn.close()
+        return ticket, None
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return None, str(e)
+
+def show_claim_portal():
+    from datetime import date
+
+    if st.session_state.claim_submitted:
+        data  = st.session_state.get("submitted_data", {})
+        pcolors = {"Critical":"#ef4444","Major":"#f59e0b","Minor":"#10b981"}
+        pcolor  = pcolors.get(data.get("priority","Minor"),"#10b981")
+        st.markdown(f"""
+        <div style='background:linear-gradient(135deg,#10b98115,#059f4615);
+                    border:2px solid #10b981; border-radius:16px;
+                    padding:32px; text-align:center; margin:24px 0;'>
+            <div style='font-size:48px;'>✅</div>
+            <div style='color:#8892a4; font-size:13px;
+                        text-transform:uppercase; letter-spacing:1px;'>
+                Claim Submitted Successfully</div>
+            <div style='font-size:36px; font-weight:700; color:#10b981;
+                        letter-spacing:2px; margin:12px 0;'>
+                {st.session_state.ticket_number}</div>
+            <div style='color:#8892a4; font-size:14px;'>
+                Save this ticket number for future reference</div>
+            <div style='margin-top:20px; color:#ffffff; font-size:14px;'>
+                Product: <b>{data.get("product_name","")}</b> &nbsp;·&nbsp;
+                Priority: <b style='color:{pcolor};'>
+                {data.get("priority","")}</b> &nbsp;·&nbsp;
+                Status: <b style='color:#4f8ef7;'>New</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.info("📧 Our quality team will contact you within the SLA timeline.")
+        if st.button("📋 Submit Another Claim"):
+            st.session_state.claim_submitted = False
+            st.rerun()
+        return
+
+    # ── Claim Form ───────────────────────────────────────
+    st.markdown("""
+    <div style='padding:8px 0 24px 0;'>
+        <h2 style='color:#ffffff; margin:0;'>📋 Submit a Quality Claim</h2>
+        <p style='color:#8892a4; margin:4px 0 0 0; font-size:14px;'>
+            Fill in all required fields to lodge a fruit quality complaint.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    customers     = get_customers()
+    products      = get_products()
+    cust_options  = {f"{c['customer_code']} — {c['customer_name']}": c["id"]
+                     for c in customers}
+    prod_options  = {p["name"]: p["id"] for p in products}
+
+    with st.form("claim_form"):
+
+        # Customer Info
+        st.markdown("<div class='section-header'>👤 Customer Information</div>",
+                    unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            sel_cust     = st.selectbox("Customer *", list(cust_options.keys()))
+            contact_name = st.text_input("Contact Person *",
+                                         placeholder="Your full name")
+        with col2:
+            email  = st.text_input("Email Address *",
+                                   placeholder="your@email.com")
+            mobile = st.text_input("Mobile Number *",
+                                   placeholder="10-digit number")
+
+        # Invoice
+        st.markdown("<div class='section-header'>🧾 Invoice Details</div>",
+                    unsafe_allow_html=True)
+        col3, col4, col5 = st.columns(3)
+        with col3:
+            invoice_number = st.text_input("Invoice Number *",
+                                           placeholder="INV-2024-001")
+        with col4:
+            invoice_date = st.date_input("Invoice Date *",
+                                         value=date.today(),
+                                         max_value=date.today())
+        with col5:
+            qty_unit = st.selectbox("Unit",
+                                    ["KG","Box","Carton","Punnet","Piece"])
+
+        # Product & Defect
+        st.markdown("<div class='section-header'>🍋 Product & Defect</div>",
+                    unsafe_allow_html=True)
+        col6, col7 = st.columns(2)
+        with col6:
+            sel_prod = st.selectbox("Product *", list(prod_options.keys()))
+        with col7:
+            defect_rows    = get_defects(prod_options[sel_prod])
+            defect_options = {d["name"]: d["id"] for d in defect_rows}
+            sel_defect     = st.selectbox("Defect Type *",
+                                          list(defect_options.keys()))
+
+        col8, col9, col10 = st.columns(3)
+        with col8:
+            qty_received = st.number_input("Qty Received *",
+                                           min_value=0.0, step=0.5,
+                                           format="%.1f")
+        with col9:
+            qty_claimed = st.number_input("Qty Claimed *",
+                                          min_value=0.0, step=0.5,
+                                          format="%.1f")
+        with col10:
+            priority = st.selectbox("Priority *",
+                                    ["Minor","Major","Critical"])
+
+        # Description
+        st.markdown("<div class='section-header'>📝 Description</div>",
+                    unsafe_allow_html=True)
+        description = st.text_area(
+            "Describe the defect in detail *",
+            placeholder="Describe the quality issue, number of units "
+                        "affected, when noticed...",
+            height=120
+        )
+
+        # SLA Guide
+        st.markdown("<div class='section-header'>ℹ️ SLA Guide</div>",
+                    unsafe_allow_html=True)
+        g1, g2, g3 = st.columns(3)
+        with g1:
+            st.markdown("""<div style='background:rgba(239,68,68,0.08);
+                border:1px solid rgba(239,68,68,0.3);border-radius:8px;
+                padding:12px;'><div style='color:#ef4444;font-weight:700;'>
+                🔴 Critical</div><div style='color:#8892a4;font-size:12px;
+                margin-top:4px;'>Response: 2h · Resolution: 24h</div>
+                </div>""", unsafe_allow_html=True)
+        with g2:
+            st.markdown("""<div style='background:rgba(245,158,11,0.08);
+                border:1px solid rgba(245,158,11,0.3);border-radius:8px;
+                padding:12px;'><div style='color:#f59e0b;font-weight:700;'>
+                🟡 Major</div><div style='color:#8892a4;font-size:12px;
+                margin-top:4px;'>Response: 4h · Resolution: 48h</div>
+                </div>""", unsafe_allow_html=True)
+        with g3:
+            st.markdown("""<div style='background:rgba(16,185,129,0.08);
+                border:1px solid rgba(16,185,129,0.3);border-radius:8px;
+                padding:12px;'><div style='color:#10b981;font-weight:700;'>
+                🟢 Minor</div><div style='color:#8892a4;font-size:12px;
+                margin-top:4px;'>Response: 8h · Resolution: 72h</div>
+                </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("🚀 Submit Quality Claim",
+                                          use_container_width=True)
+
+        if submitted:
+            errors = []
+            if not contact_name:
+                errors.append("Contact Person is required.")
+            if not email or "@" not in email:
+                errors.append("Valid email is required.")
+            if not mobile or len(mobile) < 10:
+                errors.append("Valid 10-digit mobile is required.")
+            if not invoice_number:
+                errors.append("Invoice Number is required.")
+            if qty_claimed <= 0:
+                errors.append("Quantity Claimed must be greater than 0.")
+            if qty_claimed > qty_received:
+                errors.append("Quantity Claimed cannot exceed Quantity Received.")
+            if not description:
+                errors.append("Defect Description is required.")
+
+            if errors:
+                for e in errors:
+                    st.error(f"❌ {e}")
+            else:
+                ticket, err = submit_claim({
+                    "customer_id":      cust_options[sel_cust],
+                    "product_id":       prod_options[sel_prod],
+                    "product_name":     sel_prod,
+                    "defect_type_id":   defect_options[sel_defect],
+                    "invoice_number":   invoice_number,
+                    "invoice_date":     str(invoice_date),
+                    "quantity_received": qty_received,
+                    "quantity_claimed":  qty_claimed,
+                    "quantity_unit":     qty_unit,
+                    "defect_description": description,
+                    "priority":          priority,
+                    "contact_name":      contact_name,
+                    "email":             email,
+                    "mobile":            mobile,
+                })
+                if ticket:
+                    st.session_state.claim_submitted = True
+                    st.session_state.ticket_number   = ticket
+                    st.session_state.submitted_data  = {
+                        "product_name": sel_prod,
+                        "priority":     priority,
+                    }
+                    st.rerun()
+                else:
+                    st.error(f"❌ Submission failed: {err}")
+
+
+# ══════════════════════════════════════════════════════════
+# COMING SOON PAGE
+# ══════════════════════════════════════════════════════════
+
+def show_coming_soon(title, icon):
+    st.markdown(f"""
+    <div style='text-align:center; padding:80px 20px;'>
+        <div style='font-size:64px;'>{icon}</div>
+        <h2 style='color:#ffffff; margin:16px 0 8px 0;'>{title}</h2>
+        <p style='color:#8892a4; font-size:15px;'>
+            This module is being built. Coming soon!
+        </p>
+        <div style='background:rgba(79,142,247,0.08);
+                    border:1px solid rgba(79,142,247,0.2);
+                    border-radius:10px; padding:16px;
+                    display:inline-block; margin-top:24px;'>
+            <span style='color:#4f8ef7; font-size:13px;'>
+                🔧 Under Construction
+            </span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 
-def show_login_page():
-    """
-    Renders the professional login page.
-    """
-    # Centre the login form
-    _, col, _ = st.columns([1, 1.2, 1])
+# ══════════════════════════════════════════════════════════
+# LOGIN PAGE
+# ══════════════════════════════════════════════════════════
 
+def show_login_page():
+    _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        # Logo
         st.markdown("""
-        <div class='logo-area'>
-            <div class='logo-icon'>🍋</div>
-            <p class='logo-title'>FQCMS</p>
-            <p class='logo-subtitle'>Fruit Quality Claim Management System</p>
+        <div style='text-align:center; padding:20px 0 30px 0;'>
+            <div style='font-size:48px;'>🍋</div>
+            <p style='font-size:28px; font-weight:700;
+                      color:#ffffff; margin:8px 0 0 0;'>FQCMS</p>
+            <p style='font-size:14px; color:#8892a4; margin:4px 0 0 0;'>
+                Fruit Quality Claim Management System</p>
         </div>
         """, unsafe_allow_html=True)
 
-        # Login form
-        with st.form("login_form", clear_on_submit=False):
-            username = st.text_input("Username", placeholder="Enter your username")
+        with st.form("login_form"):
+            username = st.text_input("Username",
+                                     placeholder="Enter your username")
             password = st.text_input("Password", type="password",
                                      placeholder="Enter your password")
-            submit = st.form_submit_button("Sign In →")
-
+            submit   = st.form_submit_button("Sign In →",
+                                             use_container_width=True)
             if submit:
                 user, error = login_user(username, password)
                 if user:
-                    st.session_state.logged_in = True
-                    st.session_state.user = user
-                    st.session_state.role = user["role_name"]
+                    st.session_state.logged_in    = True
+                    st.session_state.user         = user
+                    st.session_state.current_page = "dashboard"
                     st.rerun()
                 else:
                     st.error(f"❌ {error}")
 
-        # Demo credentials
         st.markdown("""
-        <div class='demo-box'>
-            <div class='demo-title'>🔑 Demo Credentials (Password: Admin@1234)</div>
-            <div class='demo-row'>
-                <span class='demo-user'>admin</span>
-                <span>System Administrator</span>
+        <div style='background:rgba(79,142,247,0.08);
+                    border:1px solid rgba(79,142,247,0.2);
+                    border-radius:10px; padding:16px; margin-top:16px;'>
+            <div style='color:#4f8ef7; font-size:12px; font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                        margin-bottom:10px;'>
+                🔑 Demo Credentials — Password: Admin@1234
             </div>
-            <div class='demo-row'>
-                <span class='demo-user'>qmanager</span>
-                <span>Quality Manager</span>
-            </div>
-            <div class='demo-row'>
-                <span class='demo-user'>qexec1</span>
-                <span>Quality Executive</span>
-            </div>
-            <div class='demo-row'>
-                <span class='demo-user'>customer1</span>
-                <span>Demo Customer</span>
+            <div style='color:#8892a4; font-size:12px; line-height:2;'>
+                <span style='color:#fff; font-weight:500;'>admin</span>
+                → System Administrator<br>
+                <span style='color:#fff; font-weight:500;'>qmanager</span>
+                → Quality Manager<br>
+                <span style='color:#fff; font-weight:500;'>qexec1</span>
+                → Quality Executive<br>
+                <span style='color:#fff; font-weight:500;'>customer1</span>
+                → Demo Customer
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -477,8 +738,31 @@ def show_login_page():
         """, unsafe_allow_html=True)
 
 
-# ── Main Router ────────────────────────────────────────────
-if st.session_state.logged_in and st.session_state.user:
-    show_dashboard(st.session_state.user)
-else:
+# ══════════════════════════════════════════════════════════
+# MAIN ROUTER
+# ══════════════════════════════════════════════════════════
+
+if not st.session_state.logged_in:
     show_login_page()
+else:
+    user = st.session_state.user
+    show_sidebar(user)
+
+    page = st.session_state.current_page
+
+    if page == "dashboard":
+        show_dashboard(user)
+    elif page == "claim_portal":
+        show_claim_portal()
+    elif page == "helpdesk":
+        show_coming_soon("Helpdesk Board", "🎫")
+    elif page == "investigations":
+        show_coming_soon("Investigations", "🔬")
+    elif page == "settlements":
+        show_coming_soon("Settlements", "💰")
+    elif page == "mgmt_dashboard":
+        show_coming_soon("Management Dashboard", "📊")
+    elif page == "admin":
+        show_coming_soon("Admin Settings", "⚙️")
+    else:
+        show_dashboard(user)
