@@ -383,15 +383,33 @@ def show_dashboard(user):
             """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-  # ── Module Navigation Links ─────────────────────────────
+ # ── Module Navigation Links ─────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("📋 Submit a New Claim", use_container_width=True):
-            st.switch_page("pages/01_claim_portal.py")
-    with col2:
-        st.info("🚧 More modules coming soon...")
+    st.info("🚧 More modules coming soon. Use the left sidebar to navigate between pages.")
+
+    st.markdown("""
+    <div style='
+        background: rgba(79,142,247,0.08);
+        border: 1px solid rgba(79,142,247,0.2);
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-top: 12px;
+    '>
+        <div style='color:#4f8ef7; font-weight:600; margin-bottom:8px;'>
+            📌 How to Navigate
+        </div>
+        <div style='color:#8892a4; font-size:13px;'>
+            👈 Use the <strong style='color:#fff;'>left sidebar</strong>
+            to access all modules:<br><br>
+            📋 Claim Portal &nbsp;·&nbsp;
+            🎫 Helpdesk &nbsp;·&nbsp;
+            🔬 Investigations &nbsp;·&nbsp;
+            💰 Settlements &nbsp;·&nbsp;
+            📊 Dashboard
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def show_login_page():
