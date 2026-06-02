@@ -4,6 +4,12 @@
 # ============================================================
 
 import streamlit as st
+import cloudinary
+import cloudinary.uploader
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from database.connection import init_database, get_connection
 
 st.set_page_config(
@@ -14,6 +20,14 @@ st.set_page_config(
 )
 
 init_database()
+
+# ── Cloudinary Configuration ───────────────────────────────
+cloudinary.config(
+    cloud_name = st.secrets.get("CLOUDINARY_CLOUD_NAME", ""),
+    api_key    = st.secrets.get("CLOUDINARY_API_KEY", ""),
+    api_secret = st.secrets.get("CLOUDINARY_API_SECRET", ""),
+    secure     = True
+)
 
 st.markdown("""
 <style>
@@ -27,7 +41,6 @@ header {visibility: hidden;}
     background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 50%, #0f1117 100%);
 }
 
-/* Input fields — white background so text is visible */
 .stTextInput > div > div > input,
 .stTextArea > div > div > textarea,
 .stNumberInput > div > div > input {
@@ -52,7 +65,6 @@ header {visibility: hidden;}
     color: #9ca3af !important;
 }
 
-/* Labels */
 .stTextInput label, .stTextArea label,
 .stSelectbox label, .stDateInput label,
 .stNumberInput label {
@@ -61,7 +73,6 @@ header {visibility: hidden;}
     font-weight: 500 !important;
 }
 
-/* Selectbox */
 .stSelectbox > div > div {
     background: #ffffff !important;
     border: 1px solid #d1d5db !important;
@@ -69,7 +80,6 @@ header {visibility: hidden;}
     color: #111827 !important;
 }
 
-/* Buttons */
 .stButton > button {
     background: linear-gradient(135deg, #4f8ef7 0%, #7c3aed 100%) !important;
     color: white !important;
@@ -84,7 +94,6 @@ header {visibility: hidden;}
     box-shadow: 0 8px 25px rgba(79,142,247,0.4) !important;
 }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
     background: #12151f !important;
     border-right: 1px solid rgba(255,255,255,0.08) !important;
@@ -110,7 +119,6 @@ header {visibility: hidden;}
     box-shadow: none !important;
 }
 
-/* Section headers */
 .section-header {
     background: rgba(79,142,247,0.08);
     border-left: 4px solid #4f8ef7;
@@ -122,25 +130,6 @@ header {visibility: hidden;}
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-}
-
-/* Ticket success card */
-.ticket-success {
-    background: linear-gradient(135deg, #10b98115, #059f4615);
-    border: 2px solid #10b981;
-    border-radius: 16px;
-    padding: 32px;
-    text-align: center;
-    margin: 24px 0;
-}
-
-/* KPI cards */
-.kpi-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
-    padding: 20px;
-    text-align: center;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -154,6 +143,200 @@ if "current_page"    not in st.session_state:
     st.session_state.current_page    = "dashboard"
 if "claim_submitted" not in st.session_state:
     st.session_state.claim_submitted = False
+
+
+# ══════════════════════════════════════════════════════════
+# EMAIL FUNCTION
+# ══════════════════════════════════════════════════════════
+
+def send_confirmation_email(to_email, customer_name, ticket_number,
+                             product, defect, priority):
+    """Sends confirmation email to customer after claim submission."""
+    try:
+        gmail     = st.secrets.get("GMAIL_ADDRESS", "")
+        app_pass  = st.secrets.get("GMAIL_APP_PASSWORD", "")
+
+        if not gmail or not app_pass:
+            return False, "Email credentials not configured."
+
+        priority_colors = {
+            "Critical": "#ef4444",
+            "Major":    "#f59e0b",
+            "Minor":    "#10b981"
+        }
+        pcolor = priority_colors.get(priority, "#10b981")
+
+        sla_map = {
+            "Critical": "Response: 2 hours | Resolution: 24 hours",
+            "Major":    "Response: 4 hours | Resolution: 48 hours",
+            "Minor":    "Response: 8 hours | Resolution: 72 hours",
+        }
+        sla_text = sla_map.get(priority, "")
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; background:#f4f4f4;
+                     margin:0; padding:20px;">
+            <div style="max-width:600px; margin:0 auto;
+                        background:#ffffff; border-radius:12px;
+                        overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+
+                <!-- Header -->
+                <div style="background:linear-gradient(135deg,#1a1d2e,#2d3748);
+                            padding:30px; text-align:center;">
+                    <div style="font-size:36px;">🍋</div>
+                    <h1 style="color:#ffffff; margin:8px 0 4px 0;
+                               font-size:22px;">FQCMS</h1>
+                    <p style="color:#8892a4; margin:0; font-size:13px;">
+                        Fruit Quality Claim Management System
+                    </p>
+                </div>
+
+                <!-- Body -->
+                <div style="padding:32px;">
+                    <h2 style="color:#111827; margin:0 0 8px 0;">
+                        ✅ Claim Submitted Successfully
+                    </h2>
+                    <p style="color:#6b7280; font-size:14px;">
+                        Dear <strong>{customer_name}</strong>,<br><br>
+                        Your quality claim has been received and registered
+                        in our system. Our quality team will investigate
+                        and contact you within the SLA timeline.
+                    </p>
+
+                    <!-- Ticket Box -->
+                    <div style="background:#f0fdf4; border:2px solid #10b981;
+                                border-radius:10px; padding:20px;
+                                text-align:center; margin:24px 0;">
+                        <p style="color:#6b7280; font-size:12px;
+                                  text-transform:uppercase; margin:0;">
+                            Your Ticket Number
+                        </p>
+                        <p style="color:#10b981; font-size:32px;
+                                  font-weight:700; letter-spacing:3px;
+                                  margin:8px 0;">
+                            {ticket_number}
+                        </p>
+                        <p style="color:#6b7280; font-size:12px; margin:0;">
+                            Please quote this number in all communications
+                        </p>
+                    </div>
+
+                    <!-- Claim Details -->
+                    <table style="width:100%; border-collapse:collapse;
+                                  margin:16px 0;">
+                        <tr style="background:#f9fafb;">
+                            <td style="padding:10px 14px; color:#6b7280;
+                                       font-size:13px; width:40%;
+                                       border-bottom:1px solid #e5e7eb;">
+                                Product
+                            </td>
+                            <td style="padding:10px 14px; color:#111827;
+                                       font-weight:600; font-size:13px;
+                                       border-bottom:1px solid #e5e7eb;">
+                                {product}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 14px; color:#6b7280;
+                                       font-size:13px;
+                                       border-bottom:1px solid #e5e7eb;">
+                                Defect Type
+                            </td>
+                            <td style="padding:10px 14px; color:#111827;
+                                       font-weight:600; font-size:13px;
+                                       border-bottom:1px solid #e5e7eb;">
+                                {defect}
+                            </td>
+                        </tr>
+                        <tr style="background:#f9fafb;">
+                            <td style="padding:10px 14px; color:#6b7280;
+                                       font-size:13px;
+                                       border-bottom:1px solid #e5e7eb;">
+                                Priority
+                            </td>
+                            <td style="padding:10px 14px; font-weight:700;
+                                       font-size:13px; color:{pcolor};
+                                       border-bottom:1px solid #e5e7eb;">
+                                {priority}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 14px; color:#6b7280;
+                                       font-size:13px;">
+                                SLA Commitment
+                            </td>
+                            <td style="padding:10px 14px; color:#111827;
+                                       font-weight:600; font-size:13px;">
+                                {sla_text}
+                            </td>
+                        </tr>
+                    </table>
+
+                    <p style="color:#6b7280; font-size:13px;
+                              background:#fffbeb; border:1px solid #fcd34d;
+                              border-radius:8px; padding:12px;">
+                        📞 If you need urgent assistance, please contact
+                        our quality team directly and quote your ticket
+                        number <strong>{ticket_number}</strong>.
+                    </p>
+                </div>
+
+                <!-- Footer -->
+                <div style="background:#f9fafb; padding:20px;
+                            text-align:center;
+                            border-top:1px solid #e5e7eb;">
+                    <p style="color:#9ca3af; font-size:12px; margin:0;">
+                        This is an automated email from FQCMS.<br>
+                        Please do not reply to this email.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"✅ Claim Received — {ticket_number} | FQCMS"
+        msg["From"]    = gmail
+        msg["To"]      = to_email
+        msg.attach(MIMEText(html_body, "html"))
+
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(gmail, app_pass)
+            server.sendmail(gmail, to_email, msg.as_string())
+
+        return True, "Email sent successfully."
+
+    except Exception as e:
+        return False, str(e)
+
+
+# ══════════════════════════════════════════════════════════
+# CLOUDINARY UPLOAD
+# ══════════════════════════════════════════════════════════
+
+def upload_to_cloudinary(file, ticket_number, file_type="photo"):
+    """
+    Uploads a file to Cloudinary.
+    Returns (url, public_id) on success or (None, error) on failure.
+    """
+    try:
+        folder   = f"FQCMS/{ticket_number}"
+        resource = "video" if file_type == "video" else "image"
+
+        result = cloudinary.uploader.upload(
+            file,
+            folder          = folder,
+            resource_type   = resource,
+            use_filename    = True,
+            unique_filename = True,
+        )
+        return result.get("secure_url"), result.get("public_id")
+    except Exception as e:
+        return None, str(e)
 
 
 # ══════════════════════════════════════════════════════════
@@ -343,9 +526,7 @@ def show_dashboard(user):
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
-    <h4 style='color:#ffffff; margin-bottom:16px;'>
-        📌 Quick Actions
-    </h4>
+    <h4 style='color:#ffffff; margin-bottom:16px;'>📌 Quick Actions</h4>
     """, unsafe_allow_html=True)
 
     qa1, qa2, qa3 = st.columns(3)
@@ -353,18 +534,16 @@ def show_dashboard(user):
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;
-                    margin-bottom:8px;'>
+                    border-radius:10px; padding:18px; margin-bottom:8px;'>
             <div style='font-size:28px;'>📋</div>
-            <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>
-                Submit a Claim</div>
+            <div style='color:#ffffff; font-weight:600; font-size:14px;
+                        margin-top:8px;'>Submit a Claim</div>
             <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
                 Lodge a quality complaint</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open Claim Form →",
-                     key="qa_claim", use_container_width=True):
+        if st.button("Open Claim Form →", key="qa_claim",
+                     use_container_width=True):
             st.session_state.current_page    = "claim_portal"
             st.session_state.claim_submitted = False
             st.rerun()
@@ -373,18 +552,16 @@ def show_dashboard(user):
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;
-                    margin-bottom:8px;'>
+                    border-radius:10px; padding:18px; margin-bottom:8px;'>
             <div style='font-size:28px;'>🎫</div>
-            <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>
-                Helpdesk Board</div>
+            <div style='color:#ffffff; font-weight:600; font-size:14px;
+                        margin-top:8px;'>Helpdesk Board</div>
             <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
                 View all tickets</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open Helpdesk →",
-                     key="qa_helpdesk", use_container_width=True):
+        if st.button("Open Helpdesk →", key="qa_helpdesk",
+                     use_container_width=True):
             st.session_state.current_page = "helpdesk"
             st.rerun()
 
@@ -392,18 +569,16 @@ def show_dashboard(user):
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;
-                    margin-bottom:8px;'>
+                    border-radius:10px; padding:18px; margin-bottom:8px;'>
             <div style='font-size:28px;'>📊</div>
-            <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>
-                Dashboard</div>
+            <div style='color:#ffffff; font-weight:600; font-size:14px;
+                        margin-top:8px;'>Dashboard</div>
             <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
                 KPI reports</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open Dashboard →",
-                     key="qa_dash", use_container_width=True):
+        if st.button("Open Dashboard →", key="qa_dash",
+                     use_container_width=True):
             st.session_state.current_page = "mgmt_dashboard"
             st.rerun()
 
@@ -454,6 +629,21 @@ def generate_ticket_number():
     conn.close()
     return f"FRUIT-{row['last_value']:06d}"
 
+def save_attachment(claim_id, filename, file_type,
+                    mime_type, size, url, public_id):
+    """Saves uploaded file metadata to database."""
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO attachments (
+            claim_id, original_filename, stored_filename,
+            file_type, mime_type, file_size_bytes,
+            gdrive_file_id, gdrive_view_url
+        ) VALUES (?,?,?,?,?,?,?,?)
+    """, (claim_id, filename, public_id, file_type,
+          mime_type, size, public_id, url))
+    conn.commit()
+    conn.close()
+
 def submit_claim(data):
     from datetime import datetime, timedelta
     conn   = get_connection()
@@ -496,11 +686,11 @@ def submit_claim(data):
         )
         conn.commit()
         conn.close()
-        return ticket, None
+        return ticket, cid, None
     except Exception as e:
         conn.rollback()
         conn.close()
-        return None, str(e)
+        return None, None, str(e)
 
 
 # ══════════════════════════════════════════════════════════
@@ -553,9 +743,25 @@ def show_claim_portal():
         </div>
         """, unsafe_allow_html=True)
 
-        st.info("📧 Our quality team will contact you within the SLA "
-                "timeline. Please quote your ticket number in all "
-                "communications.")
+        # Email status
+        if data.get("email_sent"):
+            st.success(f"📧 Confirmation email sent to {data.get('email')}")
+        else:
+            st.warning("📧 Email notification could not be sent. "
+                       "Please save your ticket number manually.")
+
+        # Uploaded files summary
+        if data.get("uploaded_files"):
+            st.markdown("""
+            <div style='background:rgba(79,142,247,0.08);
+                        border:1px solid rgba(79,142,247,0.2);
+                        border-radius:10px; padding:16px; margin:16px 0;'>
+                <div style='color:#4f8ef7; font-weight:600;
+                            margin-bottom:8px;'>📎 Uploaded Files</div>
+            """, unsafe_allow_html=True)
+            for f in data["uploaded_files"]:
+                st.markdown(f"✅ {f}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -610,7 +816,53 @@ def show_claim_portal():
             key="defect_selector"
         )
 
-    # ── Rest of form ─────────────────────────────────────
+    # ── File Upload OUTSIDE form ─────────────────────────
+    st.markdown(
+        "<div class='section-header'>📎 Attachments (Optional)</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("""
+    <p style='color:#8892a4; font-size:13px; margin-bottom:8px;'>
+        Upload photos or videos of the defect.
+        Photos: JPG, PNG (max 10MB each) · Videos: MP4, MOV (max 50MB)
+    </p>
+    """, unsafe_allow_html=True)
+
+    uploaded_photos = st.file_uploader(
+        "Upload Photos",
+        type=["jpg", "jpeg", "png", "heic"],
+        accept_multiple_files=True,
+        key="photo_uploader",
+        help="Maximum 10MB per photo"
+    )
+    uploaded_videos = st.file_uploader(
+        "Upload Videos",
+        type=["mp4", "mov"],
+        accept_multiple_files=True,
+        key="video_uploader",
+        help="Maximum 50MB per video"
+    )
+
+    # Preview uploaded photos
+    if uploaded_photos:
+        st.markdown(f"""
+        <div style='color:#10b981; font-size:13px; margin:8px 0;'>
+            ✅ {len(uploaded_photos)} photo(s) ready to upload
+        </div>
+        """, unsafe_allow_html=True)
+        cols = st.columns(min(len(uploaded_photos), 4))
+        for i, photo in enumerate(uploaded_photos[:4]):
+            with cols[i]:
+                st.image(photo, width=120)
+
+    if uploaded_videos:
+        st.markdown(f"""
+        <div style='color:#10b981; font-size:13px; margin:8px 0;'>
+            ✅ {len(uploaded_videos)} video(s) ready to upload
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Main Form ────────────────────────────────────────
     with st.form("claim_form", clear_on_submit=False):
 
         # Customer Info
@@ -691,7 +943,7 @@ def show_claim_portal():
 
         # SLA Guide
         st.markdown(
-            "<div class='section-header'>ℹ️ Priority & SLA Guide</div>",
+            "<div class='section-header'>ℹ️ SLA Guide</div>",
             unsafe_allow_html=True
         )
         g1, g2, g3 = st.columns(3)
@@ -700,11 +952,10 @@ def show_claim_portal():
             <div style='background:rgba(239,68,68,0.08);
                 border:1px solid rgba(239,68,68,0.3);
                 border-radius:8px; padding:12px;'>
-                <div style='color:#ef4444; font-weight:700;'>
+                <div style='color:#ef4444;font-weight:700;'>
                     🔴 Critical</div>
-                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
-                    Response: 2h<br>Resolution: 24h<br>
-                    Total product loss
+                <div style='color:#8892a4;font-size:12px;margin-top:4px;'>
+                    Response: 2h · Resolution: 24h
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -713,11 +964,10 @@ def show_claim_portal():
             <div style='background:rgba(245,158,11,0.08);
                 border:1px solid rgba(245,158,11,0.3);
                 border-radius:8px; padding:12px;'>
-                <div style='color:#f59e0b; font-weight:700;'>
+                <div style='color:#f59e0b;font-weight:700;'>
                     🟡 Major</div>
-                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
-                    Response: 4h<br>Resolution: 48h<br>
-                    Significant quality issue
+                <div style='color:#8892a4;font-size:12px;margin-top:4px;'>
+                    Response: 4h · Resolution: 48h
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -726,24 +976,21 @@ def show_claim_portal():
             <div style='background:rgba(16,185,129,0.08);
                 border:1px solid rgba(16,185,129,0.3);
                 border-radius:8px; padding:12px;'>
-                <div style='color:#10b981; font-weight:700;'>
+                <div style='color:#10b981;font-weight:700;'>
                     🟢 Minor</div>
-                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
-                    Response: 8h<br>Resolution: 72h<br>
-                    Small quantity affected
+                <div style='color:#8892a4;font-size:12px;margin-top:4px;'>
+                    Response: 8h · Resolution: 72h
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         submitted = st.form_submit_button(
             "🚀 Submit Quality Claim",
             use_container_width=True
         )
 
         if submitted:
-            # Validation
             errors = []
             if not contact_name.strip():
                 errors.append("Contact Person name is required.")
@@ -766,32 +1013,73 @@ def show_claim_portal():
                 for err in errors:
                     st.error(f"❌ {err}")
             else:
-                ticket, error = submit_claim({
-                    "customer_id":       cust_options[sel_cust],
-                    "product_id":        prod_options[sel_prod],
-                    "product_name":      sel_prod,
-                    "defect_type_id":    defect_options[sel_defect],
-                    "invoice_number":    invoice_number.strip(),
-                    "invoice_date":      str(invoice_date),
-                    "quantity_received": qty_received,
-                    "quantity_claimed":  qty_claimed,
-                    "quantity_unit":     qty_unit,
-                    "defect_description": description.strip(),
-                    "priority":          priority,
-                    "contact_name":      contact_name.strip(),
-                    "email":             email.strip(),
-                    "mobile":            mobile.strip(),
-                })
-                if ticket:
-                    st.session_state.claim_submitted = True
-                    st.session_state.ticket_number   = ticket
-                    st.session_state.submitted_data  = {
-                        "product_name": sel_prod,
-                        "priority":     priority,
-                    }
-                    st.rerun()
-                else:
-                    st.error(f"❌ Submission failed: {error}")
+                with st.spinner("Submitting your claim..."):
+                    ticket, claim_id, error = submit_claim({
+                        "customer_id":        cust_options[sel_cust],
+                        "product_id":         prod_options[sel_prod],
+                        "product_name":       sel_prod,
+                        "defect_type_id":     defect_options[sel_defect],
+                        "invoice_number":     invoice_number.strip(),
+                        "invoice_date":       str(invoice_date),
+                        "quantity_received":  qty_received,
+                        "quantity_claimed":   qty_claimed,
+                        "quantity_unit":      qty_unit,
+                        "defect_description": description.strip(),
+                        "priority":           priority,
+                        "contact_name":       contact_name.strip(),
+                        "email":              email.strip(),
+                        "mobile":             mobile.strip(),
+                    })
+
+                    if not ticket:
+                        st.error(f"❌ Submission failed: {error}")
+                    else:
+                        # Upload photos
+                        uploaded_names = []
+                        all_files = []
+                        if uploaded_photos:
+                            for f in uploaded_photos:
+                                all_files.append((f, "photo"))
+                        if uploaded_videos:
+                            for f in uploaded_videos:
+                                all_files.append((f, "video"))
+
+                        for f, ftype in all_files:
+                            url, pub_id = upload_to_cloudinary(
+                                f, ticket, ftype
+                            )
+                            if url:
+                                save_attachment(
+                                    claim_id,
+                                    f.name,
+                                    ftype,
+                                    f.type,
+                                    f.size,
+                                    url,
+                                    pub_id
+                                )
+                                uploaded_names.append(f.name)
+
+                        # Send confirmation email
+                        email_sent, _ = send_confirmation_email(
+                            to_email      = email.strip(),
+                            customer_name = contact_name.strip(),
+                            ticket_number = ticket,
+                            product       = sel_prod,
+                            defect        = sel_defect,
+                            priority      = priority
+                        )
+
+                        st.session_state.claim_submitted = True
+                        st.session_state.ticket_number   = ticket
+                        st.session_state.submitted_data  = {
+                            "product_name":   sel_prod,
+                            "priority":       priority,
+                            "email":          email.strip(),
+                            "email_sent":     email_sent,
+                            "uploaded_files": uploaded_names,
+                        }
+                        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════
