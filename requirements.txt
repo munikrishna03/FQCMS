@@ -4,3 +4,4 @@ plotly
 pandas
 cloudinary
 Pillow
+openpyxl
