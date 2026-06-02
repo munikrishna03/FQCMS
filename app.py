@@ -1,6 +1,7 @@
 # ============================================================
 # FQCMS - Main Application Entry Point
-# app.py - Complete Version including Management Dashboard
+# app.py - FINAL COMPLETE VERSION
+# Includes: All Modules + Admin Panel + Export + Emails
 # ============================================================
 
 import streamlit as st
@@ -8,6 +9,8 @@ import cloudinary
 import cloudinary.uploader
 import smtplib
 import ssl
+import io
+import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from database.connection import init_database, get_connection
@@ -22,9 +25,9 @@ st.set_page_config(
 init_database()
 
 cloudinary.config(
-    cloud_name = st.secrets.get("CLOUDINARY_CLOUD_NAME", ""),
-    api_key    = st.secrets.get("CLOUDINARY_API_KEY", ""),
-    api_secret = st.secrets.get("CLOUDINARY_API_SECRET", ""),
+    cloud_name = st.secrets.get("CLOUDINARY_CLOUD_NAME",""),
+    api_key    = st.secrets.get("CLOUDINARY_API_KEY",""),
+    api_secret = st.secrets.get("CLOUDINARY_API_SECRET",""),
     secure     = True
 )
 
@@ -155,113 +158,18 @@ for key, val in {
 
 
 # ══════════════════════════════════════════════════════════
-# EMAIL
+# EMAIL FUNCTIONS
 # ══════════════════════════════════════════════════════════
 
-def send_confirmation_email(to_email, customer_name,
-                             ticket_number, product,
-                             defect, priority):
-    try:
-        gmail    = st.secrets.get("GMAIL_ADDRESS", "")
-        app_pass = st.secrets.get("GMAIL_APP_PASSWORD", "")
-        if not gmail or not app_pass:
-            return False, "Not configured."
-        pcolors = {"Critical":"#ef4444","Major":"#f59e0b",
-                   "Minor":"#10b981"}
-        pcolor  = pcolors.get(priority,"#10b981")
-        sla_map = {
-            "Critical":"Response: 2h | Resolution: 24h",
-            "Major":   "Response: 4h | Resolution: 48h",
-            "Minor":   "Response: 8h | Resolution: 72h",
-        }
-        html = f"""<!DOCTYPE html><html><body style="font-family:Arial;
-        background:#f4f4f4;padding:20px;">
-        <div style="max-width:600px;margin:0 auto;background:#fff;
-        border-radius:12px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#1e293b,#334155);
-        padding:30px;text-align:center;">
-        <div style="font-size:36px;">🍋</div>
-        <h1 style="color:#fff;margin:8px 0 4px;font-size:22px;">
-        FQCMS</h1></div>
-        <div style="padding:32px;">
-        <h2 style="color:#1e293b;">✅ Claim Received</h2>
-        <p style="color:#475569;">Dear <strong>{customer_name}
-        </strong>, your claim has been received.</p>
-        <div style="background:#f0fdf4;border:2px solid #10b981;
-        border-radius:10px;padding:20px;text-align:center;
-        margin:20px 0;">
-        <p style="color:#10b981;font-size:32px;font-weight:700;
-        letter-spacing:3px;margin:8px 0;">{ticket_number}</p>
-        </div>
-        <p style="color:#475569;">Product: <strong>{product}
-        </strong> | Defect: <strong>{defect}</strong><br>
-        Priority: <strong style="color:{pcolor};">{priority}
-        </strong> | SLA: {sla_map.get(priority,"")}</p></div>
-        <div style="background:#f8fafc;padding:16px;
-        text-align:center;">
-        <p style="color:#94a3b8;font-size:12px;margin:0;">
-        Automated email from FQCMS</p>
-        </div></div></body></html>"""
-        msg            = MIMEMultipart("alternative")
-        msg["Subject"] = f"✅ Claim {ticket_number} | FQCMS"
-        msg["From"]    = gmail
-        msg["To"]      = to_email
-        msg.attach(MIMEText(html,"html"))
-        ctx = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com",465,
-                               context=ctx) as s:
-            s.login(gmail,app_pass)
-            s.sendmail(gmail,to_email,msg.as_string())
-        return True, "Sent"
-    except Exception as e:
-        return False, str(e)
-
-
-def send_assignment_email(to_email, assignee_name,
-                           ticket_number, customer_name,
-                           product, priority):
+def send_email_base(to_email, subject, html):
+    """Base email sender."""
     try:
         gmail    = st.secrets.get("GMAIL_ADDRESS","")
         app_pass = st.secrets.get("GMAIL_APP_PASSWORD","")
         if not gmail or not app_pass:
             return False
-        html = f"""<!DOCTYPE html><html><body
-        style="font-family:Arial;background:#f4f4f4;padding:20px;">
-        <div style="max-width:600px;margin:0 auto;background:#fff;
-        border-radius:12px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#1e293b,#334155);
-        padding:30px;text-align:center;">
-        <div style="font-size:36px;">🍋</div>
-        <h1 style="color:#fff;margin:8px 0;font-size:22px;">
-        FQCMS</h1></div>
-        <div style="padding:32px;">
-        <h2 style="color:#1e293b;">🎫 Ticket Assigned to You</h2>
-        <p style="color:#475569;">Dear <strong>{assignee_name}
-        </strong>, a claim has been assigned to you.</p>
-        <div style="background:#eff6ff;border:2px solid #3b82f6;
-        border-radius:10px;padding:20px;text-align:center;
-        margin:20px 0;">
-        <p style="color:#3b82f6;font-size:28px;font-weight:700;
-        letter-spacing:3px;margin:8px 0;">{ticket_number}</p>
-        </div>
-        <table style="width:100%;border-collapse:collapse;">
-        <tr><td style="padding:8px;color:#475569;width:40%;
-        border-bottom:1px solid #e2e8f0;">Customer</td>
-        <td style="padding:8px;color:#1e293b;font-weight:600;
-        border-bottom:1px solid #e2e8f0;">{customer_name}</td></tr>
-        <tr><td style="padding:8px;color:#475569;
-        border-bottom:1px solid #e2e8f0;">Product</td>
-        <td style="padding:8px;color:#1e293b;font-weight:600;
-        border-bottom:1px solid #e2e8f0;">{product}</td></tr>
-        <tr><td style="padding:8px;color:#475569;">Priority</td>
-        <td style="padding:8px;color:#ef4444;font-weight:700;">
-        {priority}</td></tr></table>
-        <p style="color:#475569;margin-top:16px;">
-        Please login to FQCMS to investigate.</p>
-        </div></div></body></html>"""
         msg            = MIMEMultipart("alternative")
-        msg["Subject"] = (f"🎫 {ticket_number} "
-                          f"Assigned | FQCMS")
+        msg["Subject"] = subject
         msg["From"]    = gmail
         msg["To"]      = to_email
         msg.attach(MIMEText(html,"html"))
@@ -273,6 +181,179 @@ def send_assignment_email(to_email, assignee_name,
         return True
     except Exception:
         return False
+
+def email_header():
+    return """<div style="background:linear-gradient(
+        135deg,#1e293b,#334155);padding:30px;
+        text-align:center;">
+        <div style="font-size:36px;">🍋</div>
+        <h1 style="color:#fff;margin:8px 0 4px;
+        font-size:22px;">FQCMS</h1>
+        <p style="color:#94a3b8;margin:0;font-size:13px;">
+        Fruit Quality Claim Management System</p></div>"""
+
+def email_footer():
+    return """<div style="background:#f8fafc;padding:16px;
+        text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="color:#94a3b8;font-size:12px;margin:0;">
+        Automated email from FQCMS · Do not reply
+        </p></div>"""
+
+def send_confirmation_email(to_email, customer_name,
+                             ticket_number, product,
+                             defect, priority):
+    pcolors = {"Critical":"#ef4444","Major":"#f59e0b",
+               "Minor":"#10b981"}
+    pcolor  = pcolors.get(priority,"#10b981")
+    sla_map = {
+        "Critical":"Response: 2h | Resolution: 24h",
+        "Major":   "Response: 4h | Resolution: 48h",
+        "Minor":   "Response: 8h | Resolution: 72h",
+    }
+    html = f"""<!DOCTYPE html><html><body
+    style="font-family:Arial;background:#f4f4f4;padding:20px;">
+    <div style="max-width:600px;margin:0 auto;background:#fff;
+    border-radius:12px;overflow:hidden;">
+    {email_header()}
+    <div style="padding:32px;">
+    <h2 style="color:#1e293b;">✅ Claim Received</h2>
+    <p style="color:#475569;">Dear <strong>
+    {customer_name}</strong>, your claim has been received.
+    </p>
+    <div style="background:#f0fdf4;border:2px solid #10b981;
+    border-radius:10px;padding:20px;text-align:center;
+    margin:20px 0;">
+    <p style="color:#64748b;font-size:12px;
+    text-transform:uppercase;margin:0;">Ticket Number</p>
+    <p style="color:#10b981;font-size:32px;font-weight:700;
+    letter-spacing:3px;margin:8px 0;">{ticket_number}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:8px;color:#475569;width:40%;
+    border-bottom:1px solid #e2e8f0;">Product</td>
+    <td style="padding:8px;color:#1e293b;font-weight:600;
+    border-bottom:1px solid #e2e8f0;">{product}</td></tr>
+    <tr><td style="padding:8px;color:#475569;
+    border-bottom:1px solid #e2e8f0;">Defect</td>
+    <td style="padding:8px;color:#1e293b;font-weight:600;
+    border-bottom:1px solid #e2e8f0;">{defect}</td></tr>
+    <tr><td style="padding:8px;color:#475569;">Priority</td>
+    <td style="padding:8px;color:{pcolor};font-weight:700;">
+    {priority}</td></tr></table>
+    <p style="color:#475569;margin-top:12px;font-size:13px;">
+    SLA: {sla_map.get(priority,"")}</p></div>
+    {email_footer()}</div></body></html>"""
+    return send_email_base(
+        to_email,
+        f"✅ Claim {ticket_number} Received | FQCMS",
+        html
+    ), "Sent"
+
+def send_assignment_email(to_email, assignee_name,
+                           ticket_number, customer_name,
+                           product, priority):
+    html = f"""<!DOCTYPE html><html><body
+    style="font-family:Arial;background:#f4f4f4;padding:20px;">
+    <div style="max-width:600px;margin:0 auto;background:#fff;
+    border-radius:12px;overflow:hidden;">
+    {email_header()}
+    <div style="padding:32px;">
+    <h2 style="color:#1e293b;">🎫 Ticket Assigned to You
+    </h2>
+    <p style="color:#475569;">Dear <strong>{assignee_name}
+    </strong>, a claim has been assigned to you for
+    investigation.</p>
+    <div style="background:#eff6ff;border:2px solid #3b82f6;
+    border-radius:10px;padding:20px;text-align:center;
+    margin:20px 0;">
+    <p style="color:#3b82f6;font-size:28px;font-weight:700;
+    letter-spacing:3px;margin:8px 0;">{ticket_number}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:8px;color:#475569;width:40%;
+    border-bottom:1px solid #e2e8f0;">Customer</td>
+    <td style="padding:8px;color:#1e293b;font-weight:600;
+    border-bottom:1px solid #e2e8f0;">{customer_name}</td>
+    </tr>
+    <tr><td style="padding:8px;color:#475569;
+    border-bottom:1px solid #e2e8f0;">Product</td>
+    <td style="padding:8px;color:#1e293b;font-weight:600;
+    border-bottom:1px solid #e2e8f0;">{product}</td></tr>
+    <tr><td style="padding:8px;color:#475569;">Priority</td>
+    <td style="padding:8px;color:#ef4444;font-weight:700;">
+    {priority}</td></tr></table>
+    <p style="color:#475569;margin-top:16px;">
+    Please login to FQCMS to investigate this claim.</p>
+    </div>{email_footer()}</div></body></html>"""
+    return send_email_base(
+        to_email,
+        f"🎫 {ticket_number} Assigned to You | FQCMS",
+        html
+    )
+
+def send_settlement_email(to_email, customer_name,
+                           ticket_number, decision,
+                           approved_qty, credit_amount,
+                           currency, remarks):
+    dec_colors = {
+        "Approved":"#10b981",
+        "Partial Approval":"#f59e0b",
+        "Rejected":"#ef4444"
+    }
+    dec_color = dec_colors.get(decision,"#64748b")
+    dec_icons = {
+        "Approved":"✅",
+        "Partial Approval":"⚡",
+        "Rejected":"❌"
+    }
+    dec_icon  = dec_icons.get(decision,"📋")
+    html = f"""<!DOCTYPE html><html><body
+    style="font-family:Arial;background:#f4f4f4;padding:20px;">
+    <div style="max-width:600px;margin:0 auto;background:#fff;
+    border-radius:12px;overflow:hidden;">
+    {email_header()}
+    <div style="padding:32px;">
+    <h2 style="color:#1e293b;">{dec_icon} Claim Settlement
+    Update</h2>
+    <p style="color:#475569;">Dear <strong>{customer_name}
+    </strong>, your quality claim settlement has been
+    processed.</p>
+    <div style="background:#f8fafc;border:2px solid
+    {dec_color};border-radius:10px;padding:20px;
+    text-align:center;margin:20px 0;">
+    <p style="color:#64748b;font-size:12px;
+    text-transform:uppercase;margin:0;">Ticket</p>
+    <p style="color:{dec_color};font-size:28px;
+    font-weight:700;letter-spacing:3px;margin:8px 0;">
+    {ticket_number}</p>
+    <p style="color:{dec_color};font-size:18px;
+    font-weight:700;margin:4px 0;">{decision}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+    <tr><td style="padding:8px;color:#475569;width:40%;
+    border-bottom:1px solid #e2e8f0;">Decision</td>
+    <td style="padding:8px;color:{dec_color};font-weight:700;
+    border-bottom:1px solid #e2e8f0;">{decision}</td></tr>
+    <tr><td style="padding:8px;color:#475569;
+    border-bottom:1px solid #e2e8f0;">Approved Qty</td>
+    <td style="padding:8px;color:#1e293b;font-weight:600;
+    border-bottom:1px solid #e2e8f0;">{approved_qty}</td>
+    </tr>
+    <tr><td style="padding:8px;color:#475569;
+    border-bottom:1px solid #e2e8f0;">Credit Amount</td>
+    <td style="padding:8px;color:#10b981;font-weight:700;
+    font-size:16px;border-bottom:1px solid #e2e8f0;">
+    {currency} {credit_amount:,.2f}</td></tr>
+    <tr><td style="padding:8px;color:#475569;">Remarks</td>
+    <td style="padding:8px;color:#1e293b;">{remarks}</td>
+    </tr></table></div>
+    {email_footer()}</div></body></html>"""
+    return send_email_base(
+        to_email,
+        f"{dec_icon} Settlement Update — "
+        f"{ticket_number} | FQCMS",
+        html
+    )
 
 
 # ══════════════════════════════════════════════════════════
@@ -290,7 +371,8 @@ def upload_to_cloudinary(file, ticket_number,
             use_filename    = True,
             unique_filename = True,
         )
-        return result.get("secure_url"), result.get("public_id")
+        return result.get("secure_url"), \
+               result.get("public_id")
     except Exception as e:
         return None, str(e)
 
@@ -347,7 +429,8 @@ def show_sidebar(user):
     color = role_colors.get(role,"#ffffff")
     with st.sidebar:
         st.markdown(f"""
-        <div style='padding:16px 8px 8px;text-align:center;'>
+        <div style='padding:16px 8px 8px;
+                    text-align:center;'>
             <div style='font-size:36px;'>🍋</div>
             <div style='color:#ffffff;font-weight:700;
                         font-size:18px;margin-top:4px;'>
@@ -389,18 +472,20 @@ def show_sidebar(user):
                       "Quality Executive"]),
             ("📊  Dashboard",      "mgmt_dashboard",
              role in ["Admin","Quality Manager"]),
+            ("📥  Export Reports", "export",
+             role in ["Admin","Quality Manager"]),
             ("⚙️  Admin Settings", "admin",
              role == "Admin"),
         ]
         for label, page, visible in nav_items:
             if visible:
-                if st.button(label, key=f"nav_{page}"):
+                if st.button(label,key=f"nav_{page}"):
                     st.session_state.current_page    = page
                     st.session_state.claim_submitted = False
                     st.session_state.selected_claim  = None
                     st.rerun()
         st.divider()
-        if st.button("🚪  Logout", key="nav_logout"):
+        if st.button("🚪  Logout",key="nav_logout"):
             for k in list(st.session_state.keys()):
                 del st.session_state[k]
             st.rerun()
@@ -420,7 +505,8 @@ def show_dashboard(user):
     }
     color = role_colors.get(role,"#3b82f6")
     st.markdown(f"""
-    <div style='background:#ffffff;border:1px solid #e2e8f0;
+    <div style='background:#ffffff;
+                border:1px solid #e2e8f0;
                 border-left:4px solid {color};
                 border-radius:12px;padding:24px 28px;
                 margin-bottom:24px;
@@ -472,7 +558,7 @@ def show_dashboard(user):
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>",unsafe_allow_html=True)
     st.markdown("""
     <h4 style='color:#1e293b;margin-bottom:16px;'>
         📌 Quick Actions</h4>""",
@@ -486,8 +572,8 @@ def show_dashboard(user):
         (qa2,"🎫","Helpdesk Board",
          "View all tickets",
          "qa_help","helpdesk"),
-        (qa3,"📊","Management Dashboard",
-         "KPI reports & analytics",
+        (qa3,"📊","Dashboard",
+         "KPI reports",
          "qa_dash","mgmt_dashboard"),
     ]:
         with col:
@@ -510,7 +596,7 @@ def show_dashboard(user):
                 st.session_state.claim_submitted = False
                 st.rerun()
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<br>",unsafe_allow_html=True)
     st.info("👈 Use the left sidebar to navigate.")
 
 
@@ -641,8 +727,8 @@ def show_claim_portal():
         data    = st.session_state.get("submitted_data",{})
         pcolors = {"Critical":"#ef4444","Major":"#f59e0b",
                    "Minor":"#10b981"}
-        pcolor  = pcolors.get(data.get("priority","Minor"),
-                              "#10b981")
+        pcolor  = pcolors.get(
+            data.get("priority","Minor"),"#10b981")
         st.markdown(f"""
         <div style='background:linear-gradient(
                     135deg,#f0fdf4,#dcfce7);
@@ -654,19 +740,20 @@ def show_claim_portal():
             <div style='color:#166534;font-size:13px;
                         font-weight:600;
                         text-transform:uppercase;
-                        letter-spacing:1px;margin-top:12px;'>
+                        letter-spacing:1px;
+                        margin-top:12px;'>
                 Claim Submitted Successfully</div>
             <div style='font-size:40px;font-weight:700;
                         color:#10b981;letter-spacing:3px;
-                        margin:16px 0;font-family:monospace;'>
+                        margin:16px 0;
+                        font-family:monospace;'>
                 {st.session_state.ticket_number}</div>
-            <div style='color:#475569;font-size:14px;'>
-                Save this ticket number for reference</div>
         </div>
         """, unsafe_allow_html=True)
         if data.get("email_sent"):
             st.success(
-                f"📧 Confirmation sent to {data.get('email')}")
+                f"📧 Confirmation sent to "
+                f"{data.get('email')}")
         col_a,col_b = st.columns(2)
         with col_a:
             if st.button("📋 Submit Another",
@@ -685,7 +772,8 @@ def show_claim_portal():
     <div style='margin-bottom:24px;'>
         <h2 style='color:#1e293b;margin:0;'>
             📋 Submit a Quality Claim</h2>
-        <p style='color:#64748b;margin:6px 0 0;font-size:14px;'>
+        <p style='color:#64748b;margin:6px 0 0;
+                  font-size:14px;'>
             Internal claim submission form.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -693,13 +781,14 @@ def show_claim_portal():
     customers    = get_customers()
     products     = get_products()
     cust_options = {
-        f"{c['customer_code']} — {c['customer_name']}": c["id"]
-        for c in customers
+        f"{c['customer_code']} — {c['customer_name']}":
+        c["id"] for c in customers
     }
-    prod_options = {p["name"]: p["id"] for p in products}
+    prod_options = {p["name"]:p["id"] for p in products}
 
     st.markdown(
-        "<div class='section-header'>🍋 Product & Defect</div>",
+        "<div class='section-header'>"
+        "🍋 Product & Defect</div>",
         unsafe_allow_html=True)
     pd1,pd2 = st.columns(2)
     with pd1:
@@ -715,7 +804,8 @@ def show_claim_portal():
             key="defect_selector")
 
     st.markdown(
-        "<div class='section-header'>📎 Attachments</div>",
+        "<div class='section-header'>"
+        "📎 Attachments</div>",
         unsafe_allow_html=True)
     cu1,cu2 = st.columns(2)
     with cu1:
@@ -742,7 +832,8 @@ def show_claim_portal():
         with c1:
             sel_cust     = st.selectbox("Customer *",
                 list(cust_options.keys()))
-            contact_name = st.text_input("Contact Person *",
+            contact_name = st.text_input(
+                "Contact Person *",
                 placeholder="Full name")
         with c2:
             email  = st.text_input("Email *",
@@ -756,11 +847,14 @@ def show_claim_portal():
             unsafe_allow_html=True)
         c3,c4,c5 = st.columns(3)
         with c3:
-            invoice_number = st.text_input("Invoice Number *",
+            invoice_number = st.text_input(
+                "Invoice Number *",
                 placeholder="INV-2024-001")
         with c4:
-            invoice_date = st.date_input("Invoice Date *",
-                value=date.today(),max_value=date.today())
+            invoice_date = st.date_input(
+                "Invoice Date *",
+                value=date.today(),
+                max_value=date.today())
         with c5:
             qty_unit = st.selectbox("Unit",
                 ["KG","Box","Carton","Punnet","Piece"])
@@ -771,10 +865,12 @@ def show_claim_portal():
             unsafe_allow_html=True)
         c6,c7,c8 = st.columns(3)
         with c6:
-            qty_received = st.number_input("Qty Received *",
+            qty_received = st.number_input(
+                "Qty Received *",
                 min_value=0.0,step=0.5,format="%.1f")
         with c7:
-            qty_claimed = st.number_input("Qty Claimed *",
+            qty_claimed = st.number_input(
+                "Qty Claimed *",
                 min_value=0.0,step=0.5,format="%.1f")
         with c8:
             priority = st.selectbox("Priority *",
@@ -784,8 +880,8 @@ def show_claim_portal():
             "<div class='section-header'>"
             "📝 Description</div>",
             unsafe_allow_html=True)
-        description = st.text_area("Describe the defect *",
-            height=120,
+        description = st.text_area(
+            "Describe the defect *",height=120,
             placeholder="Describe the issue...")
 
         st.markdown("<br>",unsafe_allow_html=True)
@@ -798,18 +894,21 @@ def show_claim_portal():
                 errors.append("Contact name required.")
             if not email.strip() or "@" not in email:
                 errors.append("Valid email required.")
-            if not mobile.strip() or len(mobile.strip())<10:
+            if not mobile.strip() or \
+               len(mobile.strip())<10:
                 errors.append("Valid mobile required.")
             if not invoice_number.strip():
                 errors.append("Invoice number required.")
             if qty_claimed <= 0:
                 errors.append("Qty Claimed must be > 0.")
             if qty_claimed > qty_received:
-                errors.append("Claimed cannot exceed Received.")
+                errors.append(
+                    "Claimed cannot exceed Received.")
             if not description.strip():
                 errors.append("Description required.")
             if errors:
-                for e in errors: st.error(f"❌ {e}")
+                for e in errors:
+                    st.error(f"❌ {e}")
             else:
                 with st.spinner("Submitting..."):
                     ticket,cid,err = submit_claim({
@@ -829,7 +928,8 @@ def show_claim_portal():
                         "defect_description":
                             description.strip(),
                         "priority":priority,
-                        "contact_name":contact_name.strip(),
+                        "contact_name":
+                            contact_name.strip(),
                         "email":email.strip(),
                         "mobile":mobile.strip(),
                     })
@@ -837,27 +937,33 @@ def show_claim_portal():
                         st.error(f"❌ Failed: {err}")
                     else:
                         for f in (uploaded_photos or []):
-                            url,pid = upload_to_cloudinary(
-                                f,ticket,"photo")
+                            url,pid = \
+                                upload_to_cloudinary(
+                                    f,ticket,"photo")
                             if url:
-                                save_attachment(cid,f.name,
-                                    "photo",f.type,f.size,
-                                    url,pid)
+                                save_attachment(
+                                    cid,f.name,"photo",
+                                    f.type,f.size,url,pid)
                         for f in (uploaded_videos or []):
-                            url,pid = upload_to_cloudinary(
-                                f,ticket,"video")
+                            url,pid = \
+                                upload_to_cloudinary(
+                                    f,ticket,"video")
                             if url:
-                                save_attachment(cid,f.name,
-                                    "video",f.type,f.size,
-                                    url,pid)
-                        email_sent,_ = send_confirmation_email(
-                            email.strip(),
-                            contact_name.strip(),
-                            ticket,sel_prod,
-                            sel_defect,priority)
-                        st.session_state.claim_submitted = True
-                        st.session_state.ticket_number   = ticket
-                        st.session_state.submitted_data  = {
+                                save_attachment(
+                                    cid,f.name,"video",
+                                    f.type,f.size,url,pid)
+                        email_sent,_ = \
+                            send_confirmation_email(
+                                email.strip(),
+                                contact_name.strip(),
+                                ticket,sel_prod,
+                                sel_defect,priority)
+                        st.session_state.claim_submitted\
+                            = True
+                        st.session_state.ticket_number \
+                            = ticket
+                        st.session_state.submitted_data \
+                            = {
                             "product_name": sel_prod,
                             "priority":     priority,
                             "email":        email.strip(),
@@ -871,15 +977,20 @@ def show_claim_portal():
 # ══════════════════════════════════════════════════════════
 
 def get_priority_color(priority):
-    return {"Critical":"#ef4444","Major":"#f59e0b",
-            "Minor":"#10b981"}.get(priority,"#64748b")
+    return {
+        "Critical":"#ef4444",
+        "Major":"#f59e0b",
+        "Minor":"#10b981"
+    }.get(priority,"#64748b")
 
 def get_status_color(status):
     return {
-        "New":"#3b82f6","Assigned":"#8b5cf6",
+        "New":"#3b82f6",
+        "Assigned":"#8b5cf6",
         "Investigation":"#f59e0b",
         "Pending Approval":"#f97316",
-        "Resolved":"#10b981","Closed":"#64748b",
+        "Resolved":"#10b981",
+        "Closed":"#64748b",
     }.get(status,"#64748b")
 
 def get_ageing(created_at):
@@ -917,7 +1028,8 @@ def update_claim_status(claim_id, new_status, user_id):
         (claim_id,)).fetchone()
     old_status = old["status"] if old else ""
     conn.execute(
-        "UPDATE claims SET status=?,updated_at=? WHERE id=?",
+        "UPDATE claims SET status=?,updated_at=? "
+        "WHERE id=?",
         (new_status,now,claim_id))
     if new_status == "Resolved":
         conn.execute(
@@ -932,14 +1044,15 @@ def update_claim_status(claim_id, new_status, user_id):
         (claim_id,user_id,action,entity_type,
          entity_id,old_value,new_value)
         VALUES (?,?,'STATUS_CHANGE','claim',?,?,?)
-    """, (claim_id,user_id,claim_id,old_status,new_status))
+    """, (claim_id,user_id,claim_id,
+          old_status,new_status))
     conn.commit()
     conn.close()
 
 def assign_claim(claim_id, assignee_id, user_id,
-                 assignee_email=None, assignee_name=None,
-                 ticket_number=None, customer_name=None,
-                 product=None, priority=None):
+                 assignee_email=None,assignee_name=None,
+                 ticket_number=None,customer_name=None,
+                 product=None,priority=None):
     from datetime import datetime
     conn = get_connection()
     now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -947,7 +1060,8 @@ def assign_claim(claim_id, assignee_id, user_id,
         UPDATE claims
         SET assigned_to_id=?,assigned_at=?,
             status=CASE WHEN status='New'
-                        THEN 'Assigned' ELSE status END,
+                        THEN 'Assigned'
+                        ELSE status END,
             updated_at=?
         WHERE id=?
     """, (assignee_id,now,now,claim_id))
@@ -1042,8 +1156,10 @@ def show_helpdesk(user):
     conn.close()
 
     exec_opts   = {"Unassigned":None}
-    exec_opts.update({e["full_name"]:e["id"] for e in execs})
-    exec_emails = {e["full_name"]:e["email"] for e in execs}
+    exec_opts.update(
+        {e["full_name"]:e["id"] for e in execs})
+    exec_emails = {
+        e["full_name"]:e["email"] for e in execs}
 
     s1,s2,s3,s4 = st.columns(4)
     for col,label,value,clr,bg in [
@@ -1053,7 +1169,8 @@ def show_helpdesk(user):
          "#ef4444","#fef2f2"),
         (s3,"Open",
          sum(1 for c in claims
-             if c["status"] not in ("Resolved","Closed")),
+             if c["status"] not in
+             ("Resolved","Closed")),
          "#f59e0b","#fffbeb"),
         (s4,"Closed",
          sum(1 for c in claims
@@ -1105,8 +1222,8 @@ def show_kanban(claims):
                         border-radius:10px;padding:10px;
                         margin-bottom:8px;'>
                 <div style='color:{color};font-weight:700;
-                            font-size:11px;
-                            text-transform:uppercase;'>
+                    font-size:11px;
+                    text-transform:uppercase;'>
                     {status}</div>
                 <div style='color:#64748b;font-size:11px;'>
                     {len(sc)} ticket(s)</div>
@@ -1122,23 +1239,25 @@ def show_kanban(claims):
                        "🟡" if sla=="warning"  else "🟢")
                 st.markdown(f"""
                 <div style='background:#ffffff;
-                            border:1px solid #e2e8f0;
-                            border-left:3px solid {pc};
-                            border-radius:8px;padding:10px;
-                            margin-bottom:8px;'>
-                    <div style='color:#3b82f6;font-size:11px;
-                                font-weight:700;'>
+                    border:1px solid #e2e8f0;
+                    border-left:3px solid {pc};
+                    border-radius:8px;padding:10px;
+                    margin-bottom:8px;'>
+                    <div style='color:#3b82f6;
+                        font-size:11px;font-weight:700;'>
                         {c["ticket_number"]}</div>
-                    <div style='color:#1e293b;font-size:12px;
-                                font-weight:600;margin:3px 0;'>
+                    <div style='color:#1e293b;
+                        font-size:12px;font-weight:600;
+                        margin:3px 0;'>
                         {c["customer_name"]}</div>
-                    <div style='color:#64748b;font-size:11px;'>
+                    <div style='color:#64748b;
+                        font-size:11px;'>
                         {c["product_name"]}</div>
                     <div style='display:flex;
                         justify-content:space-between;
                         margin-top:6px;font-size:10px;'>
                         <span style='color:{pc};
-                                     font-weight:600;'>
+                            font-weight:600;'>
                             {c["priority"]}</span>
                         <span style='color:#64748b;'>
                             ⏱{age}</span>
@@ -1148,19 +1267,25 @@ def show_kanban(claims):
                 """, unsafe_allow_html=True)
 
 
-def show_list_view(claims, role, exec_opts, exec_emails):
-    status_opts = ["New","Assigned","Investigation",
-                   "Pending Approval","Resolved","Closed"]
+def show_list_view(claims, role, exec_opts,
+                   exec_emails):
+    status_opts = [
+        "New","Assigned","Investigation",
+        "Pending Approval","Resolved","Closed"
+    ]
     for c in claims:
         pc  = get_priority_color(c["priority"])
         sc  = get_status_color(c["status"])
         age = get_ageing(c["created_at"])
         sla = get_sla_status(
-            c["sla_resolution_due_at"] or "",c["status"])
+            c["sla_resolution_due_at"] or "",
+            c["status"])
         slac = ("#ef4444" if sla=="breached" else
-                "#f59e0b" if sla=="warning"  else "#10b981")
+                "#f59e0b" if sla=="warning"
+                else "#10b981")
         slal = ("⚠️ Breached" if sla=="breached" else
-                "⚡ Warning"  if sla=="warning"  else "✅ OK")
+                "⚡ Warning"  if sla=="warning"
+                else "✅ OK")
 
         with st.expander(
             f"🎫 {c['ticket_number']}  |  "
@@ -1175,7 +1300,8 @@ def show_list_view(claims, role, exec_opts, exec_emails):
                     border:1px solid #e2e8f0;
                     border-radius:10px;padding:16px;'>
                     <div style='display:flex;gap:6px;
-                        flex-wrap:wrap;margin-bottom:12px;'>
+                        flex-wrap:wrap;
+                        margin-bottom:12px;'>
                         <span style='background:{pc}15;
                             color:{pc};padding:3px 10px;
                             border-radius:20px;
@@ -1190,54 +1316,60 @@ def show_list_view(claims, role, exec_opts, exec_emails):
                             {c["status"]}</span>
                         <span style='background:{slac}15;
                             color:{slac};padding:3px 10px;
-                            border-radius:20px;font-size:11px;
-                            font-weight:600;
+                            border-radius:20px;
+                            font-size:11px;font-weight:600;
                             border:1px solid {slac}30;'>
                             {slal}</span>
                     </div>
-                    <table style='width:100%;font-size:13px;
-                                  border-collapse:collapse;'>
-                    <tr><td style='color:#64748b;padding:5px 0;
-                        width:35%;'>Customer</td>
+                    <table style='width:100%;
+                        font-size:13px;
+                        border-collapse:collapse;'>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;width:35%;'>
+                        Customer</td>
                         <td style='color:#1e293b;
-                                   font-weight:600;'>
+                            font-weight:600;'>
                         {c["customer_name"]}</td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Contact</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Contact</td>
                         <td style='color:#1e293b;'>
                         {c["submitted_by_name"]} ·
                         {c["submitted_by_email"]}</td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Product</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Product</td>
                         <td style='color:#1e293b;'>
                         {c["product_name"]}</td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Defect</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Defect</td>
                         <td style='color:#1e293b;'>
                         {c["defect_name"]}</td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Qty Claimed</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Qty</td>
                         <td style='color:#1e293b;'>
                         {c["quantity_claimed"]}
                         {c["quantity_unit"]}</td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Assigned To</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Assigned</td>
                         <td style='color:#1e293b;'>
                         {c["assigned_to"] or "Unassigned"}
                         </td></tr>
-                    <tr><td style='color:#64748b;padding:5px 0;'>
-                        Ageing</td>
+                    <tr><td style='color:#64748b;
+                        padding:5px 0;'>Ageing</td>
                         <td style='color:#f59e0b;
-                                   font-weight:600;'>
+                            font-weight:600;'>
                         {age}</td></tr>
                     </table>
-                    <div style='margin-top:10px;padding:10px;
-                        background:#f8fafc;border-radius:8px;'>
-                        <div style='color:#64748b;font-size:11px;
-                            font-weight:600;margin-bottom:4px;'>
+                    <div style='margin-top:10px;
+                        padding:10px;background:#f8fafc;
+                        border-radius:8px;'>
+                        <div style='color:#64748b;
+                            font-size:11px;font-weight:600;
+                            margin-bottom:4px;'>
                             DESCRIPTION</div>
-                        <div style='color:#1e293b;font-size:13px;'>
-                            {c["defect_description"]}</div>
+                        <div style='color:#1e293b;
+                            font-size:13px;'>
+                            {c["defect_description"]}
+                        </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1247,16 +1379,17 @@ def show_list_view(claims, role, exec_opts, exec_emails):
                 <div style='background:#ffffff;
                     border:1px solid #e2e8f0;
                     border-radius:10px;padding:16px;'>
-                    <div style='color:#3b82f6;font-weight:600;
-                        font-size:13px;margin-bottom:12px;'>
+                    <div style='color:#3b82f6;
+                        font-weight:600;font-size:13px;
+                        margin-bottom:12px;'>
                         ⚡ Actions</div>
                 """, unsafe_allow_html=True)
-
                 if role in ["Admin","Quality Manager",
                             "Quality Executive"]:
                     ns = st.selectbox(
                         "Update Status",status_opts,
-                        index=status_opts.index(c["status"]),
+                        index=status_opts.index(
+                            c["status"]),
                         key=f"st_{c['id']}")
                     if st.button("💾 Save Status",
                         key=f"sv_{c['id']}",
@@ -1265,13 +1398,13 @@ def show_list_view(claims, role, exec_opts, exec_emails):
                             update_claim_status(
                                 c["id"],ns,
                                 st.session_state.user["id"])
-                            st.success(f"✅ Updated to {ns}")
+                            st.success(
+                                f"✅ Updated to {ns}")
                             st.rerun()
                         else:
                             st.info("No change.")
-
-                    st.markdown("<br>",unsafe_allow_html=True)
-
+                    st.markdown("<br>",
+                                unsafe_allow_html=True)
                     asgn = st.selectbox(
                         "Assign To",
                         list(exec_opts.keys()),
@@ -1285,24 +1418,27 @@ def show_list_view(claims, role, exec_opts, exec_emails):
                             assignee_email=
                                 exec_emails.get(asgn),
                             assignee_name=asgn,
-                            ticket_number=c["ticket_number"],
-                            customer_name=c["customer_name"],
+                            ticket_number=
+                                c["ticket_number"],
+                            customer_name=
+                                c["customer_name"],
                             product=c["product_name"],
                             priority=c["priority"])
-                        st.success(f"✅ Assigned to {asgn}")
+                        st.success(
+                            f"✅ Assigned to {asgn}")
                         st.rerun()
-
-                    st.markdown("<br>",unsafe_allow_html=True)
+                    st.markdown("<br>",
+                                unsafe_allow_html=True)
                     if st.button("🔬 Investigate",
                         key=f"inv_{c['id']}",
                         use_container_width=True):
-                        st.session_state.selected_claim = \
-                            c["id"]
-                        st.session_state.current_page = \
-                            "investigations"
+                        st.session_state.selected_claim\
+                            = c["id"]
+                        st.session_state.current_page \
+                            = "investigations"
                         st.rerun()
-
-                st.markdown("</div>",unsafe_allow_html=True)
+                st.markdown("</div>",
+                            unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
@@ -1369,24 +1505,25 @@ def show_investigations(user):
         claim["sla_resolution_due_at"] or "",
         claim["status"])
     slac = ("#ef4444" if sla=="breached" else
-            "#f59e0b" if sla=="warning"  else "#10b981")
+            "#f59e0b" if sla=="warning"
+            else "#10b981")
 
     st.markdown(f"""
     <div style='background:#ffffff;
                 border:1px solid #e2e8f0;
                 border-left:4px solid {pc};
-                border-radius:12px;padding:16px 20px;
-                margin-bottom:16px;'>
+                border-radius:12px;
+                padding:16px 20px;margin-bottom:16px;'>
         <div style='display:flex;
                     justify-content:space-between;
                     align-items:center;flex-wrap:wrap;
                     gap:8px;'>
             <div>
                 <span style='color:#3b82f6;font-size:18px;
-                             font-weight:700;'>
+                    font-weight:700;'>
                     {claim["ticket_number"]}</span>
                 <span style='color:#64748b;font-size:14px;
-                             margin-left:12px;'>
+                    margin-left:12px;'>
                     {claim["customer_name"]} ·
                     {claim["product_name"]} ·
                     {claim["defect_name"]}</span>
@@ -1407,7 +1544,7 @@ def show_investigations(user):
                     border-radius:20px;font-size:12px;
                     font-weight:600;
                     border:1px solid {slac}30;'>
-                    ⏱ Age: {age}</span>
+                    ⏱ {age}</span>
             </div>
         </div>
     </div>
@@ -1429,24 +1566,28 @@ def show_investigations(user):
                 border:1px solid #e2e8f0;
                 border-radius:10px;padding:16px;'>
                 <div style='color:#64748b;font-size:11px;
-                    font-weight:600;text-transform:uppercase;
-                    margin-bottom:12px;'>Contact Info</div>
+                    font-weight:600;
+                    text-transform:uppercase;
+                    margin-bottom:12px;'>
+                    Contact Info</div>
                 <table style='width:100%;font-size:13px;'>
-                <tr><td style='color:#64748b;padding:5px 0;
-                    width:40%;'>Name</td>
-                    <td style='color:#1e293b;font-weight:600;'>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;width:40%;'>Name</td>
+                    <td style='color:#1e293b;
+                        font-weight:600;'>
                     {claim["submitted_by_name"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Email</td>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Email</td>
                     <td style='color:#1e293b;'>
                     {claim["submitted_by_email"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Mobile</td>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Mobile</td>
                     <td style='color:#1e293b;'>
                     {claim["submitted_by_mobile"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Customer</td>
-                    <td style='color:#1e293b;font-weight:600;'>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Customer</td>
+                    <td style='color:#1e293b;
+                        font-weight:600;'>
                     {claim["customer_name"]}</td></tr>
                 </table>
             </div>
@@ -1457,27 +1598,31 @@ def show_investigations(user):
                 border:1px solid #e2e8f0;
                 border-radius:10px;padding:16px;'>
                 <div style='color:#64748b;font-size:11px;
-                    font-weight:600;text-transform:uppercase;
-                    margin-bottom:12px;'>Claim Details</div>
+                    font-weight:600;
+                    text-transform:uppercase;
+                    margin-bottom:12px;'>
+                    Claim Details</div>
                 <table style='width:100%;font-size:13px;'>
-                <tr><td style='color:#64748b;padding:5px 0;
-                    width:40%;'>Invoice</td>
-                    <td style='color:#1e293b;font-weight:600;'>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;width:40%;'>Invoice</td>
+                    <td style='color:#1e293b;
+                        font-weight:600;'>
                     {claim["invoice_number"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Date</td>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Date</td>
                     <td style='color:#1e293b;'>
                     {claim["invoice_date"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Product</td>
-                    <td style='color:#1e293b;font-weight:600;'>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Product</td>
+                    <td style='color:#1e293b;
+                        font-weight:600;'>
                     {claim["product_name"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Defect</td>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Defect</td>
                     <td style='color:#1e293b;'>
                     {claim["defect_name"]}</td></tr>
-                <tr><td style='color:#64748b;padding:5px 0;'>
-                    Qty Claimed</td>
+                <tr><td style='color:#64748b;
+                    padding:5px 0;'>Qty</td>
                     <td style='color:#1e293b;'>
                     {claim["quantity_claimed"]}
                     {claim["quantity_unit"]}</td></tr>
@@ -1490,10 +1635,10 @@ def show_investigations(user):
         """, unsafe_allow_html=True)
         st.markdown(f"""
         <div style='background:#fffbeb;
-                    border:1px solid #fcd34d;
-                    border-radius:10px;padding:16px;
-                    color:#92400e;font-size:14px;
-                    line-height:1.6;'>
+            border:1px solid #fcd34d;
+            border-radius:10px;padding:16px;
+            color:#92400e;font-size:14px;
+            line-height:1.6;'>
             {claim["defect_description"]}
         </div>
         """, unsafe_allow_html=True)
@@ -1512,7 +1657,8 @@ def show_investigations(user):
             st.info("No files uploaded.")
         else:
             for f in files:
-                size_kb = round(f["file_size_bytes"]/1024,1)
+                size_kb = round(
+                    f["file_size_bytes"]/1024,1)
                 icon = ("🖼️" if f["file_type"]=="photo"
                         else "🎥")
                 st.markdown(f"""
@@ -1526,11 +1672,13 @@ def show_investigations(user):
                         <span style='font-size:16px;'>
                             {icon}</span>
                         <span style='color:#1e293b;
-                            font-weight:600;font-size:13px;
+                            font-weight:600;
+                            font-size:13px;
                             margin-left:8px;'>
                             {f["original_filename"]}</span>
                         <span style='color:#64748b;
-                            font-size:12px;margin-left:8px;'>
+                            font-size:12px;
+                            margin-left:8px;'>
                             {size_kb} KB ·
                             {f["uploaded_at"][:16]}</span>
                     </div>
@@ -1539,8 +1687,8 @@ def show_investigations(user):
                        style='background:#eff6ff;
                        color:#3b82f6;padding:6px 14px;
                        border-radius:6px;
-                       text-decoration:none;font-size:12px;
-                       font-weight:600;
+                       text-decoration:none;
+                       font-size:12px;font-weight:600;
                        border:1px solid #bfdbfe;'>
                         👁️ View</a>
                 </div>
@@ -1567,7 +1715,8 @@ def show_investigations(user):
                     "Root Cause *",root_opts,
                     index=root_opts.index(
                         inv["root_cause_category"])
-                    if inv and inv["root_cause_category"]
+                    if inv and \
+                       inv["root_cause_category"] \
                        in root_opts else 0)
                 inspector = st.text_input(
                     "Inspector",
@@ -1580,15 +1729,14 @@ def show_investigations(user):
                     "Inspection Date",
                     value=dt_date.today())
                 lab_ref = st.text_input(
-                    "Lab Report Ref",
+                    "Lab Ref",
                     value=inv["lab_report_ref"]
                     if inv else "",
                     placeholder="LAB-2024-001")
             root_details = st.text_area(
                 "Root Cause Details *",
                 value=inv["root_cause_details"]
-                if inv else "",
-                height=90)
+                if inv else "",height=90)
             findings = st.text_area(
                 "Findings *",
                 value=inv["findings"] if inv else "",
@@ -1647,16 +1795,17 @@ def show_investigations(user):
                                 claim_id,
                                 root_cause_category,
                                 root_cause_details,
-                                findings,corrective_action,
+                                findings,
+                                corrective_action,
                                 preventive_action,
                                 inspection_date,
                                 inspector_name,
                                 lab_report_ref,
                                 investigator_id,
-                                started_at,created_at,
-                                updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,?,
-                                      ?,?,?,?)
+                                started_at,
+                                created_at,updated_at
+                            ) VALUES (?,?,?,?,?,?,?,?,
+                                      ?,?,?,?,?)
                         """, (claim_id,root_cause,
                               root_details.strip(),
                               findings.strip(),
@@ -1677,8 +1826,8 @@ def show_investigations(user):
                         (claim_id,user_id,action,
                          entity_type,entity_id,new_value)
                         VALUES (?,?,
-                                'INVESTIGATION_SAVED',
-                                'investigation',?,?)
+                            'INVESTIGATION_SAVED',
+                            'investigation',?,?)
                     """, (claim_id,user["id"],
                           claim_id,root_cause))
                     conn.commit()
@@ -1738,14 +1887,17 @@ def show_investigations(user):
                         justify-content:space-between;
                         margin-bottom:8px;'>
                         <span style='color:#1e293b;
-                            font-weight:600;font-size:13px;'>
-                            👤 {note["full_name"]}</span>
+                            font-weight:600;
+                            font-size:13px;'>
+                            👤 {note["full_name"]}
+                        </span>
                         <span style='color:#94a3b8;
                             font-size:12px;'>
-                            {note["created_at"][:16]}</span>
+                            {note["created_at"][:16]}
+                        </span>
                     </div>
-                    <div style='color:#475569;font-size:13px;
-                                line-height:1.6;'>
+                    <div style='color:#475569;
+                        font-size:13px;line-height:1.6;'>
                         {note["note"]}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1753,8 +1905,10 @@ def show_investigations(user):
             st.info("No notes yet.")
 
     with tab5:
-        status_opts = ["New","Assigned","Investigation",
-                       "Pending Approval","Resolved","Closed"]
+        status_opts = [
+            "New","Assigned","Investigation",
+            "Pending Approval","Resolved","Closed"
+        ]
         with st.form(f"res_form_{claim_id}"):
             new_status = st.selectbox(
                 "Update Status",status_opts,
@@ -1786,7 +1940,8 @@ def show_investigations(user):
                 st.rerun()
 
         st.markdown("""
-        <div class='section-header'>📋 Audit Trail</div>
+        <div class='section-header'>
+            📋 Audit Trail</div>
         """, unsafe_allow_html=True)
         conn = get_connection()
         logs = conn.execute("""
@@ -1823,15 +1978,16 @@ def show_investigations(user):
                     border-bottom:1px solid #f1f5f9;
                     align-items:flex-start;'>
                     <span style='font-size:16px;
-                                 margin-top:2px;'>
-                        {icon}</span>
+                        margin-top:2px;'>{icon}</span>
                     <div style='flex:1;'>
                         <div style='color:#1e293b;
-                            font-size:13px;font-weight:600;'>
+                            font-size:13px;
+                            font-weight:600;'>
                             {log["action"].replace(
                                 "_"," ").title()}</div>
                         <div style='color:#64748b;
-                            font-size:12px;'>{detail}</div>
+                            font-size:12px;'>
+                            {detail}</div>
                     </div>
                     <div style='text-align:right;'>
                         <div style='color:#94a3b8;
@@ -1930,17 +2086,16 @@ def show_submit_settlement(user):
     <div style='background:#ffffff;
                 border:1px solid #e2e8f0;
                 border-left:4px solid {pc};
-                border-radius:10px;padding:14px 18px;
-                margin:12px 0;'>
+                border-radius:10px;
+                padding:14px 18px;margin:12px 0;'>
         <span style='color:#3b82f6;font-weight:700;'>
             {claim["ticket_number"]}</span>
         <span style='color:#64748b;font-size:13px;
                      margin-left:12px;'>
-            {claim["customer_name"]} · {claim["product_name"]}
-        </span>
+            {claim["customer_name"]} ·
+            {claim["product_name"]}</span>
         <div style='color:#64748b;font-size:13px;
-                    margin-top:4px;'>
-            Qty Claimed:
+                    margin-top:4px;'>Qty Claimed:
             <strong style='color:#1e293b;'>
                 {claim["quantity_claimed"]}
                 {claim["quantity_unit"]}</strong>
@@ -1971,7 +2126,7 @@ def show_submit_settlement(user):
                 min_value=0.0,step=100.0,format="%.2f")
         remarks = st.text_area(
             "Remarks *",
-            placeholder="Justify the settlement decision...",
+            placeholder="Justify the decision...",
             height=120)
         st.markdown("""
         <div style='background:#fffbeb;
@@ -1979,7 +2134,7 @@ def show_submit_settlement(user):
                     border-radius:8px;padding:12px;
                     margin:8px 0;color:#92400e;
                     font-size:13px;'>
-            ⚠️ Will be sent to Quality Manager for approval.
+            ⚠️ Will be sent to Quality Manager.
         </div>
         """, unsafe_allow_html=True)
         sub = st.form_submit_button(
@@ -2026,8 +2181,7 @@ def show_submit_settlement(user):
                           claim_id,decision))
                     conn.commit()
                     conn.close()
-                    st.success(
-                        "✅ Submitted for approval!")
+                    st.success("✅ Submitted!")
                     st.rerun()
                 except Exception as e:
                     conn.rollback()
@@ -2048,7 +2202,8 @@ def show_pending_approvals(user):
                s.submitted_at,s.settlement_status,
                c.id as claim_id,c.ticket_number,
                c.priority,c.quantity_claimed,
-               c.quantity_unit,cu.customer_name,
+               c.quantity_unit,
+               cu.customer_name,cu.email as cust_email,
                p.name as product_name,
                dt.name as defect_name,
                u.full_name as submitted_by
@@ -2097,23 +2252,23 @@ def show_pending_approvals(user):
                     border:1px solid #e2e8f0;
                     border-radius:10px;padding:16px;'>
                     <table style='width:100%;
-                                  font-size:13px;
-                                  border-collapse:collapse;'>
+                        font-size:13px;
+                        border-collapse:collapse;'>
                     <tr><td style='color:#64748b;
                         padding:6px 0;width:40%;'>
                         Ticket</td>
                         <td style='color:#3b82f6;
-                                   font-weight:700;'>
+                            font-weight:700;'>
                         {s["ticket_number"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>Customer</td>
                         <td style='color:#1e293b;
-                                   font-weight:600;'>
+                            font-weight:600;'>
                         {s["customer_name"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>Decision</td>
                         <td style='color:{dc};
-                                   font-weight:700;'>
+                            font-weight:700;'>
                         {s["decision"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>Approved Qty</td>
@@ -2123,9 +2278,10 @@ def show_pending_approvals(user):
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>Credit</td>
                         <td style='color:#10b981;
-                                   font-weight:700;
-                                   font-size:15px;'>
-                        ₹{s["credit_amount"]:,.2f}</td></tr>
+                            font-weight:700;
+                            font-size:15px;'>
+                        ₹{s["credit_amount"]:,.2f}</td>
+                    </tr>
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>By</td>
                         <td style='color:#1e293b;'>
@@ -2135,8 +2291,10 @@ def show_pending_approvals(user):
                         padding:10px;background:#f8fafc;
                         border-radius:8px;'>
                         <div style='color:#64748b;
-                            font-size:11px;font-weight:600;
-                            margin-bottom:4px;'>REMARKS</div>
+                            font-size:11px;
+                            font-weight:600;
+                            margin-bottom:4px;'>
+                            REMARKS</div>
                         <div style='color:#1e293b;
                             font-size:13px;'>
                             {s["remarks"]}</div>
@@ -2147,7 +2305,7 @@ def show_pending_approvals(user):
                 with st.form(f"appr_{s['id']}"):
                     mgr_rem = st.text_area(
                         "Manager Note",
-                        placeholder="Optional note...",
+                        placeholder="Optional...",
                         height=80,
                         key=f"mgr_{s['id']}")
                     a1,a2 = st.columns(2)
@@ -2168,6 +2326,9 @@ def show_pending_approvals(user):
                                   else "Rejected")
                         new_cs = ("Resolved" if approve
                                   else "Investigation")
+                        final_remarks = s["remarks"]+(
+                            f"\n[Manager] {mgr_rem}"
+                            if mgr_rem else "")
                         conn.execute("""
                             UPDATE settlements SET
                                 settlement_status=?,
@@ -2176,10 +2337,7 @@ def show_pending_approvals(user):
                                 remarks=?,updated_at=?
                             WHERE id=?
                         """, (status,user["id"],now,
-                              s["remarks"]+(
-                                  f"\n[Manager] {mgr_rem}"
-                                  if mgr_rem else ""),
-                              now,s["id"]))
+                              final_remarks,now,s["id"]))
                         conn.execute("""
                             UPDATE claims SET
                                 status=?,updated_at=?
@@ -2198,8 +2356,32 @@ def show_pending_approvals(user):
                               s["id"],status))
                         conn.commit()
                         conn.close()
-                        st.success(
-                            f"✅ {status}!")
+
+                        # Send email to customer
+                        # Get customer email
+                        conn2 = get_connection()
+                        claim_info = conn2.execute("""
+                            SELECT c.submitted_by_email,
+                                   c.submitted_by_name
+                            FROM claims c
+                            WHERE c.id=?
+                        """, (s["claim_id"],)).fetchone()
+                        conn2.close()
+                        if claim_info:
+                            send_settlement_email(
+                                claim_info[
+                                    "submitted_by_email"],
+                                claim_info[
+                                    "submitted_by_name"],
+                                s["ticket_number"],
+                                status,
+                                s["approved_quantity"],
+                                s["credit_amount"],
+                                s["currency"],
+                                final_remarks
+                            )
+
+                        st.success(f"✅ {status}!")
                         st.rerun()
 
 
@@ -2274,7 +2456,7 @@ def show_settlement_history(user):
         <div style='color:#64748b;font-size:12px;
                     font-weight:600;
                     text-transform:uppercase;'>
-            Total Approved Credit Value</div>
+            Total Approved Credit</div>
         <div style='color:#10b981;font-size:28px;
                     font-weight:700;margin-top:4px;'>
             ₹{total_val:,.2f}</div>
@@ -2305,12 +2487,12 @@ def show_settlement_history(user):
                         padding:5px 0;width:40%;'>
                         Ticket</td>
                         <td style='color:#3b82f6;
-                                   font-weight:700;'>
+                            font-weight:700;'>
                         {s["ticket_number"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>Customer</td>
                         <td style='color:#1e293b;
-                                   font-weight:600;'>
+                            font-weight:600;'>
                         {s["customer_name"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>Product</td>
@@ -2319,8 +2501,9 @@ def show_settlement_history(user):
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>Credit</td>
                         <td style='color:#10b981;
-                                   font-weight:700;'>
-                        ₹{s["credit_amount"]:,.2f}</td></tr>
+                            font-weight:700;'>
+                        ₹{s["credit_amount"]:,.2f}</td>
+                    </tr>
                     </table>
                 </div>
                 """, unsafe_allow_html=True)
@@ -2335,7 +2518,7 @@ def show_settlement_history(user):
                         padding:5px 0;width:40%;'>
                         Status</td>
                         <td style='color:{stc};
-                                   font-weight:700;'>
+                            font-weight:700;'>
                         {s["settlement_status"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>Submitted By</td>
@@ -2363,7 +2546,6 @@ def show_settlement_history(user):
 def show_mgmt_dashboard(user):
     import plotly.express as px
     import plotly.graph_objects as go
-    import pandas as pd
 
     st.markdown("""
     <div style='margin-bottom:20px;'>
@@ -2376,15 +2558,13 @@ def show_mgmt_dashboard(user):
     """, unsafe_allow_html=True)
 
     conn = get_connection()
-
-    # ── KPI Data ──────────────────────────────────────────
-    total   = conn.execute(
+    total    = conn.execute(
         "SELECT COUNT(*) FROM claims").fetchone()[0]
-    open_c  = conn.execute(
+    open_c   = conn.execute(
         "SELECT COUNT(*) FROM claims "
         "WHERE status NOT IN ('Resolved','Closed')"
     ).fetchone()[0]
-    closed  = conn.execute(
+    closed   = conn.execute(
         "SELECT COUNT(*) FROM claims "
         "WHERE status IN ('Resolved','Closed')"
     ).fetchone()[0]
@@ -2409,15 +2589,13 @@ def show_mgmt_dashboard(user):
                 (JULIANDAY(resolved_at) -
                  JULIANDAY(created_at)) * 24
             AS REAL)
-        )
-        FROM claims
+        ) FROM claims
         WHERE resolved_at IS NOT NULL
     """).fetchone()[0]
     sla_comp = round(
-        ((total - breached) / total * 100)
+        ((total-breached)/total*100)
         if total > 0 else 100, 1)
 
-    # ── KPI Cards ─────────────────────────────────────────
     k1,k2,k3,k4 = st.columns(4)
     for col,label,value,clr,bg,sub in [
         (k1,"Total Claims",  total,
@@ -2440,24 +2618,25 @@ def show_mgmt_dashboard(user):
                 <div style='font-size:32px;font-weight:700;
                             color:{clr};'>{value}</div>
                 <div style='font-size:13px;color:#1e293b;
-                            font-weight:600;margin-top:4px;'>
-                    {label}</div>
+                            font-weight:600;
+                            margin-top:4px;'>{label}</div>
                 <div style='font-size:11px;color:#64748b;
                             margin-top:2px;'>{sub}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    k5,k6,k7,k8 = st.columns(4)
     avg_str = (f"{avg_closure:.1f}h"
                if avg_closure else "N/A")
+    k5,k6,k7,k8 = st.columns(4)
     for col,label,value,clr,bg,sub in [
-        (k5,"SLA Compliance",  f"{sla_comp}%",
+        (k5,"SLA Compliance", f"{sla_comp}%",
          "#10b981","#f0fdf4","On time"),
-        (k6,"SLA Breached",    breached,
+        (k6,"SLA Breached",   breached,
          "#ef4444","#fef2f2","Overdue"),
-        (k7,"Avg Closure",     avg_str,
+        (k7,"Avg Closure",    avg_str,
          "#8b5cf6","#f5f3ff","Hours"),
-        (k8,"Total Credit",    f"₹{total_credit:,.0f}",
+        (k8,"Total Credit",
+         f"₹{total_credit:,.0f}",
          "#f59e0b","#fffbeb","Approved"),
     ]:
         with col:
@@ -2471,178 +2650,143 @@ def show_mgmt_dashboard(user):
                 <div style='font-size:26px;font-weight:700;
                             color:{clr};'>{value}</div>
                 <div style='font-size:13px;color:#1e293b;
-                            font-weight:600;margin-top:4px;'>
-                    {label}</div>
+                            font-weight:600;
+                            margin-top:4px;'>{label}</div>
                 <div style='font-size:11px;color:#64748b;
                             margin-top:2px;'>{sub}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # ── Charts ────────────────────────────────────────────
     st.markdown("""
-    <div class='section-header'>📈 Analytics Charts</div>
+    <div class='section-header'>📈 Analytics</div>
     """, unsafe_allow_html=True)
 
-    # Row 1
     ch1,ch2 = st.columns(2)
-
-    # Claims by Product
     with ch1:
-        prod_data = conn.execute("""
-            SELECT p.name as Product,
-                   COUNT(*) as Claims
+        data = conn.execute("""
+            SELECT p.name as Product,COUNT(*) as Claims
             FROM claims c
             JOIN products p ON c.product_id=p.id
             GROUP BY p.name
         """).fetchall()
-        if prod_data:
-            df_prod = pd.DataFrame(
-                [dict(r) for r in prod_data])
-            fig = px.pie(
-                df_prod,names="Product",values="Claims",
-                title="Claims by Product",
-                color_discrete_sequence=[
-                    "#3b82f6","#10b981","#f59e0b"])
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
+            fig = px.pie(df,names="Product",
+                         values="Claims",
+                         title="Claims by Product",
+                         color_discrete_sequence=[
+                             "#3b82f6","#10b981","#f59e0b"
+                         ])
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Claims by Priority
     with ch2:
-        pri_data = conn.execute("""
+        data = conn.execute("""
             SELECT priority as Priority,
                    COUNT(*) as Claims
-            FROM claims
-            GROUP BY priority
+            FROM claims GROUP BY priority
         """).fetchall()
-        if pri_data:
-            df_pri = pd.DataFrame(
-                [dict(r) for r in pri_data])
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
             colors = {"Critical":"#ef4444",
                       "Major":"#f59e0b",
                       "Minor":"#10b981"}
-            fig = px.bar(
-                df_pri,x="Priority",y="Claims",
-                title="Claims by Priority",
-                color="Priority",
-                color_discrete_map=colors)
+            fig = px.bar(df,x="Priority",y="Claims",
+                         title="Claims by Priority",
+                         color="Priority",
+                         color_discrete_map=colors)
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 showlegend=False,
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Row 2
     ch3,ch4 = st.columns(2)
-
-    # Claims by Status
     with ch3:
-        status_data = conn.execute("""
-            SELECT status as Status,
-                   COUNT(*) as Claims
-            FROM claims
-            GROUP BY status
+        data = conn.execute("""
+            SELECT status as Status,COUNT(*) as Claims
+            FROM claims GROUP BY status
         """).fetchall()
-        if status_data:
-            df_st = pd.DataFrame(
-                [dict(r) for r in status_data])
-            status_colors = {
-                "New":"#3b82f6",
-                "Assigned":"#8b5cf6",
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
+            sc = {
+                "New":"#3b82f6","Assigned":"#8b5cf6",
                 "Investigation":"#f59e0b",
                 "Pending Approval":"#f97316",
-                "Resolved":"#10b981",
-                "Closed":"#64748b"
+                "Resolved":"#10b981","Closed":"#64748b"
             }
-            fig = px.bar(
-                df_st,x="Status",y="Claims",
-                title="Claims by Status",
-                color="Status",
-                color_discrete_map=status_colors)
+            fig = px.bar(df,x="Status",y="Claims",
+                         title="Claims by Status",
+                         color="Status",
+                         color_discrete_map=sc)
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 showlegend=False,
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Claims by Defect Type
     with ch4:
-        defect_data = conn.execute("""
-            SELECT dt.name as Defect,
-                   COUNT(*) as Claims
+        data = conn.execute("""
+            SELECT dt.name as Defect,COUNT(*) as Claims
             FROM claims c
             JOIN defect_types dt
                 ON c.defect_type_id=dt.id
             GROUP BY dt.name
-            ORDER BY Claims DESC
-            LIMIT 8
+            ORDER BY Claims DESC LIMIT 8
         """).fetchall()
-        if defect_data:
-            df_def = pd.DataFrame(
-                [dict(r) for r in defect_data])
-            fig = px.bar(
-                df_def,x="Claims",y="Defect",
-                orientation="h",
-                title="Top Defect Types",
-                color="Claims",
-                color_continuous_scale="Blues")
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
+            fig = px.bar(df,x="Claims",y="Defect",
+                         orientation="h",
+                         title="Top Defect Types",
+                         color="Claims",
+                         color_continuous_scale="Blues")
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Row 3
     ch5,ch6 = st.columns(2)
-
-    # Claims by Customer
     with ch5:
-        cust_data = conn.execute("""
+        data = conn.execute("""
             SELECT cu.customer_name as Customer,
                    COUNT(*) as Claims
             FROM claims c
             JOIN customers cu ON c.customer_id=cu.id
             GROUP BY cu.customer_name
-            ORDER BY Claims DESC
-            LIMIT 8
+            ORDER BY Claims DESC LIMIT 8
         """).fetchall()
-        if cust_data:
-            df_cust = pd.DataFrame(
-                [dict(r) for r in cust_data])
-            fig = px.bar(
-                df_cust,x="Claims",y="Customer",
-                orientation="h",
-                title="Claims by Customer",
-                color="Claims",
-                color_continuous_scale="Greens")
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
+            fig = px.bar(df,x="Claims",y="Customer",
+                         orientation="h",
+                         title="Claims by Customer",
+                         color="Claims",
+                         color_continuous_scale="Greens")
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Claims by Root Cause
     with ch6:
-        rc_data = conn.execute("""
+        data = conn.execute("""
             SELECT root_cause_category as RootCause,
                    COUNT(*) as Count
             FROM investigations
@@ -2650,45 +2794,40 @@ def show_mgmt_dashboard(user):
             GROUP BY root_cause_category
             ORDER BY Count DESC
         """).fetchall()
-        if rc_data:
-            df_rc = pd.DataFrame(
-                [dict(r) for r in rc_data])
+        if data:
+            df = pd.DataFrame([dict(r) for r in data])
             fig = px.pie(
-                df_rc,names="RootCause",values="Count",
+                df,names="RootCause",values="Count",
                 title="Claims by Root Cause",
-                color_discrete_sequence=px.colors.qualitative.Set3)
+                color_discrete_sequence=
+                    px.colors.qualitative.Set3)
             fig.update_layout(
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 font_color="#1e293b",
                 title_font_size=14)
-            st.plotly_chart(fig,use_container_width=True)
-        else:
-            st.info("No investigation data yet.")
+            st.plotly_chart(fig,
+                            use_container_width=True)
 
-    # Claims by Month
     st.markdown("""
     <div class='section-header'>
         📅 Monthly Trend</div>
     """, unsafe_allow_html=True)
-    month_data = conn.execute("""
+    data = conn.execute("""
         SELECT strftime('%Y-%m',created_at) as Month,
                COUNT(*) as Claims
         FROM claims
-        GROUP BY Month
-        ORDER BY Month
+        GROUP BY Month ORDER BY Month
     """).fetchall()
-    if month_data:
-        df_month = pd.DataFrame(
-            [dict(r) for r in month_data])
-        fig = px.line(
-            df_month,x="Month",y="Claims",
-            title="Monthly Claims Trend",
-            markers=True,
-            line_shape="spline",
-            color_discrete_sequence=["#3b82f6"])
-        fig.update_traces(
-            fill="tozeroy",
+    if data:
+        df = pd.DataFrame([dict(r) for r in data])
+        fig = px.line(df,x="Month",y="Claims",
+                      title="Monthly Claims Trend",
+                      markers=True,
+                      line_shape="spline",
+                      color_discrete_sequence=
+                          ["#3b82f6"])
+        fig.update_traces(fill="tozeroy",
             fillcolor="rgba(59,130,246,0.1)")
         fig.update_layout(
             plot_bgcolor="white",
@@ -2697,62 +2836,849 @@ def show_mgmt_dashboard(user):
             title_font_size=14)
         st.plotly_chart(fig,use_container_width=True)
 
-    # Settlement Summary Table
-    st.markdown("""
-    <div class='section-header'>
-        💰 Settlement Summary</div>
-    """, unsafe_allow_html=True)
-    settle_sum = conn.execute("""
-        SELECT cu.customer_name as Customer,
-               COUNT(*) as Total,
-               SUM(CASE WHEN s.settlement_status='Approved'
-                        THEN 1 ELSE 0 END) as Approved,
-               SUM(CASE WHEN s.settlement_status='Rejected'
-                        THEN 1 ELSE 0 END) as Rejected,
-               COALESCE(SUM(
-                   CASE WHEN s.settlement_status='Approved'
-                        THEN s.credit_amount ELSE 0 END
-               ),0) as TotalCredit
-        FROM settlements s
-        JOIN claims c ON s.claim_id=c.id
-        JOIN customers cu ON c.customer_id=cu.id
-        GROUP BY cu.customer_name
-        ORDER BY TotalCredit DESC
-    """).fetchall()
-
-    if settle_sum:
-        df_ss = pd.DataFrame([dict(r) for r in settle_sum])
-        df_ss["TotalCredit"] = df_ss["TotalCredit"].apply(
-            lambda x: f"₹{x:,.2f}")
-        st.dataframe(df_ss,use_container_width=True,
-                     hide_index=True)
-    else:
-        st.info("No settlement data yet.")
-
     conn.close()
 
 
 # ══════════════════════════════════════════════════════════
-# COMING SOON
+# EXPORT REPORTS
 # ══════════════════════════════════════════════════════════
 
-def show_coming_soon(title, icon):
-    st.markdown(f"""
-    <div style='text-align:center;padding:80px 20px;'>
-        <div style='font-size:64px;'>{icon}</div>
-        <h2 style='color:#1e293b;margin:16px 0 8px;'>
-            {title}</h2>
-        <p style='color:#64748b;font-size:15px;'>
-            Coming very soon!</p>
-        <div style='background:#eff6ff;
-                    border:1px solid #bfdbfe;
-                    border-radius:10px;padding:16px;
-                    display:inline-block;margin-top:24px;'>
-            <span style='color:#3b82f6;font-size:13px;'>
-                🔧 Under Construction</span>
-        </div>
+def show_export(user):
+    st.markdown("""
+    <div style='margin-bottom:20px;'>
+        <h2 style='color:#1e293b;margin:0;'>
+            📥 Export Reports</h2>
+        <p style='color:#64748b;margin:6px 0 0;
+                  font-size:14px;'>
+            Download claims and settlements as Excel.
+        </p>
     </div>
     """, unsafe_allow_html=True)
+
+    tab1,tab2,tab3 = st.tabs([
+        "📋 Export Claims",
+        "💰 Export Settlements",
+        "📊 Export Summary"
+    ])
+
+    with tab1:
+        st.markdown("""
+        <div class='section-header'>
+            📋 Claims Export</div>
+        """, unsafe_allow_html=True)
+
+        # Filters
+        ec1,ec2,ec3 = st.columns(3)
+        with ec1:
+            exp_status = st.selectbox(
+                "Filter by Status",
+                ["All","New","Assigned",
+                 "Investigation","Pending Approval",
+                 "Resolved","Closed"],
+                key="exp_status")
+        with ec2:
+            exp_prod = st.selectbox(
+                "Filter by Product",
+                ["All","Banana","Pomegranate","Arils"],
+                key="exp_prod")
+        with ec3:
+            exp_pri = st.selectbox(
+                "Filter by Priority",
+                ["All","Critical","Major","Minor"],
+                key="exp_pri")
+
+        conn  = get_connection()
+        query = """
+            SELECT c.ticket_number as 'Ticket Number',
+                   cu.customer_name as 'Customer',
+                   cu.customer_code as 'Customer Code',
+                   c.submitted_by_name as 'Contact Person',
+                   c.submitted_by_email as 'Email',
+                   c.submitted_by_mobile as 'Mobile',
+                   p.name as 'Product',
+                   dt.name as 'Defect Type',
+                   c.invoice_number as 'Invoice No',
+                   c.invoice_date as 'Invoice Date',
+                   c.quantity_received as 'Qty Received',
+                   c.quantity_claimed as 'Qty Claimed',
+                   c.quantity_unit as 'Unit',
+                   c.priority as 'Priority',
+                   c.status as 'Status',
+                   c.defect_description as 'Description',
+                   u.full_name as 'Assigned To',
+                   c.created_at as 'Submitted Date',
+                   c.resolved_at as 'Resolved Date',
+                   c.sla_response_due_at as 'SLA Response Due',
+                   c.sla_resolution_due_at as 'SLA Resolution Due'
+            FROM claims c
+            JOIN customers cu ON c.customer_id=cu.id
+            JOIN products p   ON c.product_id=p.id
+            JOIN defect_types dt ON c.defect_type_id=dt.id
+            LEFT JOIN users u ON c.assigned_to_id=u.id
+            WHERE 1=1
+        """
+        params = []
+        if exp_status != "All":
+            query += " AND c.status=?"
+            params.append(exp_status)
+        if exp_prod != "All":
+            query += " AND p.name=?"
+            params.append(exp_prod)
+        if exp_pri != "All":
+            query += " AND c.priority=?"
+            params.append(exp_pri)
+        query += " ORDER BY c.created_at DESC"
+
+        rows = conn.execute(query,params).fetchall()
+        conn.close()
+
+        if rows:
+            df = pd.DataFrame([dict(r) for r in rows])
+            st.markdown(f"""
+            <div style='background:#eff6ff;
+                border:1px solid #bfdbfe;
+                border-radius:8px;padding:12px;
+                margin-bottom:16px;'>
+                <span style='color:#1d4ed8;
+                             font-weight:600;'>
+                    📋 {len(df)} claims ready to export
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Preview
+            st.dataframe(df.head(10),
+                         use_container_width=True,
+                         hide_index=True)
+
+            # Download
+            output = io.BytesIO()
+            with pd.ExcelWriter(
+                output,engine="openpyxl"
+            ) as writer:
+                df.to_excel(
+                    writer,sheet_name="Claims",
+                    index=False)
+            output.seek(0)
+            st.download_button(
+                label="⬇️ Download Claims as Excel",
+                data=output,
+                file_name="FQCMS_Claims_Export.xlsx",
+                mime="application/vnd.openxmlformats-"
+                     "officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            st.info("No claims found for selected filters.")
+
+    with tab2:
+        st.markdown("""
+        <div class='section-header'>
+            💰 Settlements Export</div>
+        """, unsafe_allow_html=True)
+
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT s.id as 'ID',
+                   c.ticket_number as 'Ticket Number',
+                   cu.customer_name as 'Customer',
+                   p.name as 'Product',
+                   s.decision as 'Decision',
+                   s.approved_quantity as 'Approved Qty',
+                   c.quantity_unit as 'Unit',
+                   s.credit_amount as 'Credit Amount',
+                   s.currency as 'Currency',
+                   s.settlement_status as 'Status',
+                   u1.full_name as 'Submitted By',
+                   s.submitted_at as 'Submitted At',
+                   u2.full_name as 'Approved By',
+                   s.approved_at as 'Approved At',
+                   s.remarks as 'Remarks'
+            FROM settlements s
+            JOIN claims c     ON s.claim_id=c.id
+            JOIN customers cu ON c.customer_id=cu.id
+            JOIN products p   ON c.product_id=p.id
+            JOIN users u1     ON s.submitted_by_id=u1.id
+            LEFT JOIN users u2 ON s.approved_by_id=u2.id
+            ORDER BY s.submitted_at DESC
+        """).fetchall()
+        conn.close()
+
+        if rows:
+            df = pd.DataFrame([dict(r) for r in rows])
+            st.markdown(f"""
+            <div style='background:#eff6ff;
+                border:1px solid #bfdbfe;
+                border-radius:8px;padding:12px;
+                margin-bottom:16px;'>
+                <span style='color:#1d4ed8;
+                             font-weight:600;'>
+                    💰 {len(df)} settlements ready
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.dataframe(df.head(10),
+                         use_container_width=True,
+                         hide_index=True)
+            output = io.BytesIO()
+            with pd.ExcelWriter(
+                output,engine="openpyxl"
+            ) as writer:
+                df.to_excel(
+                    writer,sheet_name="Settlements",
+                    index=False)
+            output.seek(0)
+            st.download_button(
+                label="⬇️ Download Settlements as Excel",
+                data=output,
+                file_name=
+                    "FQCMS_Settlements_Export.xlsx",
+                mime="application/vnd.openxmlformats-"
+                     "officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            st.info("No settlements found.")
+
+    with tab3:
+        st.markdown("""
+        <div class='section-header'>
+            📊 Summary Report</div>
+        """, unsafe_allow_html=True)
+
+        conn = get_connection()
+
+        # Claims summary by customer
+        cust_sum = conn.execute("""
+            SELECT cu.customer_name as 'Customer',
+                   COUNT(*) as 'Total Claims',
+                   SUM(CASE WHEN c.priority='Critical'
+                       THEN 1 ELSE 0 END) as 'Critical',
+                   SUM(CASE WHEN c.priority='Major'
+                       THEN 1 ELSE 0 END) as 'Major',
+                   SUM(CASE WHEN c.priority='Minor'
+                       THEN 1 ELSE 0 END) as 'Minor',
+                   SUM(CASE WHEN c.status IN
+                       ('Resolved','Closed')
+                       THEN 1 ELSE 0 END) as 'Resolved',
+                   SUM(c.quantity_claimed) as 'Total Qty Claimed'
+            FROM claims c
+            JOIN customers cu ON c.customer_id=cu.id
+            GROUP BY cu.customer_name
+            ORDER BY COUNT(*) DESC
+        """).fetchall()
+
+        # Claims summary by product
+        prod_sum = conn.execute("""
+            SELECT p.name as 'Product',
+                   COUNT(*) as 'Total Claims',
+                   SUM(c.quantity_claimed)
+                       as 'Total Qty Claimed',
+                   AVG(c.quantity_claimed)
+                       as 'Avg Qty Claimed'
+            FROM claims c
+            JOIN products p ON c.product_id=p.id
+            GROUP BY p.name
+        """).fetchall()
+
+        conn.close()
+
+        if cust_sum:
+            st.markdown("#### 👥 By Customer")
+            df_c = pd.DataFrame(
+                [dict(r) for r in cust_sum])
+            st.dataframe(df_c,
+                         use_container_width=True,
+                         hide_index=True)
+
+        if prod_sum:
+            st.markdown("#### 🍋 By Product")
+            df_p = pd.DataFrame(
+                [dict(r) for r in prod_sum])
+            st.dataframe(df_p,
+                         use_container_width=True,
+                         hide_index=True)
+
+        # Combined export
+        if cust_sum and prod_sum:
+            output = io.BytesIO()
+            with pd.ExcelWriter(
+                output,engine="openpyxl"
+            ) as writer:
+                pd.DataFrame(
+                    [dict(r) for r in cust_sum]
+                ).to_excel(
+                    writer,
+                    sheet_name="By Customer",
+                    index=False)
+                pd.DataFrame(
+                    [dict(r) for r in prod_sum]
+                ).to_excel(
+                    writer,
+                    sheet_name="By Product",
+                    index=False)
+            output.seek(0)
+            st.download_button(
+                label="⬇️ Download Summary Report",
+                data=output,
+                file_name="FQCMS_Summary_Report.xlsx",
+                mime="application/vnd.openxmlformats-"
+                     "officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+
+# ══════════════════════════════════════════════════════════
+# ADMIN PANEL
+# ══════════════════════════════════════════════════════════
+
+def show_admin(user):
+    st.markdown("""
+    <div style='margin-bottom:20px;'>
+        <h2 style='color:#1e293b;margin:0;'>
+            ⚙️ Admin Settings</h2>
+        <p style='color:#64748b;margin:6px 0 0;
+                  font-size:14px;'>
+            Manage users, customers, products and system.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tab1,tab2,tab3,tab4 = st.tabs([
+        "👥 Users",
+        "🏢 Customers",
+        "🍋 Products & Defects",
+        "🔑 Change Password"
+    ])
+
+    # ── TAB 1: USERS ─────────────────────────────────────
+    with tab1:
+        st.markdown("""
+        <div class='section-header'>
+            👥 User Management</div>
+        """, unsafe_allow_html=True)
+
+        conn  = get_connection()
+        users = conn.execute("""
+            SELECT u.id,u.username,u.full_name,u.email,
+                   u.is_active,r.name as role_name,
+                   u.last_login_at
+            FROM users u
+            JOIN roles r ON u.role_id=r.id
+            ORDER BY u.id
+        """).fetchall()
+        roles = conn.execute(
+            "SELECT id,name FROM roles ORDER BY id"
+        ).fetchall()
+        conn.close()
+
+        role_opts = {r["name"]:r["id"] for r in roles}
+
+        # User list
+        for u in users:
+            status_color = ("#10b981" if u["is_active"]
+                            else "#ef4444")
+            status_label = ("Active" if u["is_active"]
+                            else "Disabled")
+            with st.expander(
+                f"👤 {u['full_name']}  |  "
+                f"{u['username']}  |  "
+                f"{u['role_name']}  |  "
+                f"{status_label}"
+            ):
+                col1,col2 = st.columns([2,1])
+                with col1:
+                    st.markdown(f"""
+                    <div style='background:#ffffff;
+                        border:1px solid #e2e8f0;
+                        border-radius:10px;padding:16px;'>
+                        <table style='width:100%;
+                            font-size:13px;'>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;width:35%;'>
+                            Username</td>
+                            <td style='color:#1e293b;
+                                font-weight:600;'>
+                            {u["username"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Full Name</td>
+                            <td style='color:#1e293b;'>
+                            {u["full_name"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Email</td>
+                            <td style='color:#1e293b;'>
+                            {u["email"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Role</td>
+                            <td style='color:#3b82f6;
+                                font-weight:600;'>
+                            {u["role_name"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Status</td>
+                            <td style='color:{status_color};
+                                font-weight:600;'>
+                            {status_label}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Last Login</td>
+                            <td style='color:#1e293b;'>
+                            {u["last_login_at"][:16]
+                             if u["last_login_at"]
+                             else "Never"}</td></tr>
+                        </table>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col2:
+                    with st.form(f"edit_user_{u['id']}"):
+                        new_role = st.selectbox(
+                            "Change Role",
+                            list(role_opts.keys()),
+                            index=list(
+                                role_opts.keys()
+                            ).index(u["role_name"]),
+                            key=f"role_{u['id']}")
+                        new_active = st.selectbox(
+                            "Status",
+                            ["Active","Disabled"],
+                            index=0 if u["is_active"]
+                                  else 1,
+                            key=f"act_{u['id']}")
+                        save_u = st.form_submit_button(
+                            "💾 Save",
+                            use_container_width=True)
+                        if save_u:
+                            from datetime import datetime
+                            conn = get_connection()
+                            conn.execute("""
+                                UPDATE users SET
+                                    role_id=?,
+                                    is_active=?,
+                                    updated_at=?
+                                WHERE id=?
+                            """, (
+                                role_opts[new_role],
+                                1 if new_active=="Active"
+                                  else 0,
+                                datetime.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"),
+                                u["id"]
+                            ))
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Updated!")
+                            st.rerun()
+
+        st.markdown("---")
+
+        # Add New User
+        st.markdown("""
+        <div class='section-header'>
+            ➕ Add New User</div>
+        """, unsafe_allow_html=True)
+
+        with st.form("add_user_form"):
+            au1,au2 = st.columns(2)
+            with au1:
+                new_username  = st.text_input(
+                    "Username *",
+                    placeholder="e.g. qexec2")
+                new_fullname  = st.text_input(
+                    "Full Name *",
+                    placeholder="Full name")
+                new_role_sel  = st.selectbox(
+                    "Role *",list(role_opts.keys()))
+            with au2:
+                new_email     = st.text_input(
+                    "Email *",
+                    placeholder="user@company.com")
+                new_password  = st.text_input(
+                    "Password *",type="password",
+                    placeholder="Min 6 characters")
+                new_password2 = st.text_input(
+                    "Confirm Password *",
+                    type="password")
+
+            add_user = st.form_submit_button(
+                "➕ Create User",
+                use_container_width=True)
+
+            if add_user:
+                errors = []
+                if not new_username.strip():
+                    errors.append("Username required.")
+                if not new_fullname.strip():
+                    errors.append("Full name required.")
+                if not new_email.strip() or \
+                   "@" not in new_email:
+                    errors.append("Valid email required.")
+                if not new_password or \
+                   len(new_password) < 6:
+                    errors.append(
+                        "Password min 6 characters.")
+                if new_password != new_password2:
+                    errors.append(
+                        "Passwords do not match.")
+
+                if errors:
+                    for e in errors:
+                        st.error(f"❌ {e}")
+                else:
+                    import bcrypt
+                    hashed = bcrypt.hashpw(
+                        new_password.encode(),
+                        bcrypt.gensalt()
+                    ).decode()
+                    try:
+                        from datetime import datetime
+                        conn = get_connection()
+                        conn.execute("""
+                            INSERT INTO users (
+                                username,email,
+                                password_hash,full_name,
+                                role_id,created_at,
+                                updated_at
+                            ) VALUES (?,?,?,?,?,?,?)
+                        """, (
+                            new_username.strip(),
+                            new_email.strip(),
+                            hashed,
+                            new_fullname.strip(),
+                            role_opts[new_role_sel],
+                            datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S"),
+                            datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S")
+                        ))
+                        conn.commit()
+                        conn.close()
+                        st.success(
+                            f"✅ User {new_username} "
+                            f"created!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(
+                            f"❌ Error: {str(e)}")
+
+    # ── TAB 2: CUSTOMERS ──────────────────────────────────
+    with tab2:
+        st.markdown("""
+        <div class='section-header'>
+            🏢 Customer Management</div>
+        """, unsafe_allow_html=True)
+
+        conn  = get_connection()
+        custs = conn.execute("""
+            SELECT id,customer_code,customer_name,
+                   contact_person,email,mobile,
+                   city,is_active
+            FROM customers ORDER BY customer_name
+        """).fetchall()
+        conn.close()
+
+        for c in custs:
+            sc = ("#10b981" if c["is_active"]
+                  else "#ef4444")
+            sl = "Active" if c["is_active"] else "Inactive"
+            with st.expander(
+                f"🏢 {c['customer_code']}  |  "
+                f"{c['customer_name']}  |  {sl}"
+            ):
+                col1,col2 = st.columns([2,1])
+                with col1:
+                    st.markdown(f"""
+                    <div style='background:#ffffff;
+                        border:1px solid #e2e8f0;
+                        border-radius:10px;padding:16px;'>
+                        <table style='width:100%;
+                            font-size:13px;'>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;width:40%;'>
+                            Code</td>
+                            <td style='color:#3b82f6;
+                                font-weight:700;'>
+                            {c["customer_code"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Name</td>
+                            <td style='color:#1e293b;
+                                font-weight:600;'>
+                            {c["customer_name"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Contact</td>
+                            <td style='color:#1e293b;'>
+                            {c["contact_person"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Email</td>
+                            <td style='color:#1e293b;'>
+                            {c["email"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Mobile</td>
+                            <td style='color:#1e293b;'>
+                            {c["mobile"]}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>City</td>
+                            <td style='color:#1e293b;'>
+                            {c["city"] or "—"}</td></tr>
+                        <tr><td style='color:#64748b;
+                            padding:5px 0;'>Status</td>
+                            <td style='color:{sc};
+                                font-weight:600;'>
+                            {sl}</td></tr>
+                        </table>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    with st.form(
+                        f"edit_cust_{c['id']}"
+                    ):
+                        new_active = st.selectbox(
+                            "Status",
+                            ["Active","Inactive"],
+                            index=0 if c["is_active"]
+                                  else 1,
+                            key=f"cst_{c['id']}")
+                        save_c = st.form_submit_button(
+                            "💾 Save",
+                            use_container_width=True)
+                        if save_c:
+                            conn = get_connection()
+                            conn.execute("""
+                                UPDATE customers SET
+                                    is_active=?
+                                WHERE id=?
+                            """, (
+                                1 if new_active=="Active"
+                                  else 0,
+                                c["id"]
+                            ))
+                            conn.commit()
+                            conn.close()
+                            st.success("✅ Updated!")
+                            st.rerun()
+
+        st.markdown("---")
+        st.markdown("""
+        <div class='section-header'>
+            ➕ Add New Customer</div>
+        """, unsafe_allow_html=True)
+
+        with st.form("add_cust_form"):
+            cc1,cc2 = st.columns(2)
+            with cc1:
+                c_code    = st.text_input(
+                    "Customer Code *",
+                    placeholder="CUST-006")
+                c_name    = st.text_input(
+                    "Company Name *",
+                    placeholder="Company name")
+                c_contact = st.text_input(
+                    "Contact Person *",
+                    placeholder="Contact name")
+            with cc2:
+                c_email  = st.text_input(
+                    "Email *",
+                    placeholder="email@company.com")
+                c_mobile = st.text_input(
+                    "Mobile *",
+                    placeholder="10-digit number")
+                c_city   = st.text_input(
+                    "City",
+                    placeholder="City name")
+
+            add_cust = st.form_submit_button(
+                "➕ Add Customer",
+                use_container_width=True)
+
+            if add_cust:
+                errors = []
+                if not c_code.strip():
+                    errors.append("Code required.")
+                if not c_name.strip():
+                    errors.append("Name required.")
+                if not c_contact.strip():
+                    errors.append("Contact required.")
+                if not c_email.strip():
+                    errors.append("Email required.")
+                if not c_mobile.strip():
+                    errors.append("Mobile required.")
+                if errors:
+                    for e in errors:
+                        st.error(f"❌ {e}")
+                else:
+                    try:
+                        from datetime import datetime
+                        conn = get_connection()
+                        conn.execute("""
+                            INSERT INTO customers (
+                                customer_code,
+                                customer_name,
+                                contact_person,email,
+                                mobile,city,
+                                created_at,updated_at
+                            ) VALUES (?,?,?,?,?,?,?,?)
+                        """, (
+                            c_code.strip(),
+                            c_name.strip(),
+                            c_contact.strip(),
+                            c_email.strip(),
+                            c_mobile.strip(),
+                            c_city.strip(),
+                            datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S"),
+                            datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S")
+                        ))
+                        conn.commit()
+                        conn.close()
+                        st.success(
+                            f"✅ Customer {c_name} "
+                            f"added!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ {str(e)}")
+
+    # ── TAB 3: PRODUCTS & DEFECTS ─────────────────────────
+    with tab3:
+        st.markdown("""
+        <div class='section-header'>
+            🍋 Products & Defect Types</div>
+        """, unsafe_allow_html=True)
+
+        conn  = get_connection()
+        prods = conn.execute(
+            "SELECT id,name,is_active FROM products "
+            "ORDER BY name"
+        ).fetchall()
+        conn.close()
+
+        for p in prods:
+            conn  = get_connection()
+            defs  = conn.execute(
+                "SELECT id,name,is_active FROM defect_types "
+                "WHERE product_id=? ORDER BY name",
+                (p["id"],)
+            ).fetchall()
+            conn.close()
+
+            st.markdown(f"""
+            <div style='background:#ffffff;
+                border:1px solid #e2e8f0;
+                border-left:4px solid #3b82f6;
+                border-radius:10px;padding:16px;
+                margin-bottom:12px;'>
+                <div style='color:#1e293b;font-weight:700;
+                    font-size:15px;margin-bottom:10px;'>
+                    🍋 {p["name"]}</div>
+            """, unsafe_allow_html=True)
+
+            for d in defs:
+                dc = ("#10b981" if d["is_active"]
+                      else "#ef4444")
+                st.markdown(f"""
+                <div style='display:flex;
+                    justify-content:space-between;
+                    padding:6px 0;
+                    border-bottom:1px solid #f1f5f9;'>
+                    <span style='color:#475569;
+                        font-size:13px;'>
+                        {d["name"]}</span>
+                    <span style='color:{dc};
+                        font-size:11px;font-weight:600;'>
+                        {"Active" if d["is_active"]
+                         else "Disabled"}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Add defect to this product
+            with st.form(f"add_defect_{p['id']}"):
+                new_defect = st.text_input(
+                    f"Add new defect for {p['name']}",
+                    placeholder="Defect name",
+                    key=f"nd_{p['id']}")
+                add_d = st.form_submit_button(
+                    f"➕ Add",
+                    use_container_width=True)
+                if add_d and new_defect.strip():
+                    try:
+                        conn = get_connection()
+                        conn.execute("""
+                            INSERT INTO defect_types
+                            (product_id,name)
+                            VALUES (?,?)
+                        """, (p["id"],
+                              new_defect.strip()))
+                        conn.commit()
+                        conn.close()
+                        st.success(
+                            f"✅ Defect added!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ {str(e)}")
+
+    # ── TAB 4: CHANGE PASSWORD ────────────────────────────
+    with tab4:
+        st.markdown("""
+        <div class='section-header'>
+            🔑 Change User Password</div>
+        """, unsafe_allow_html=True)
+
+        conn  = get_connection()
+        users = conn.execute(
+            "SELECT id,username,full_name FROM users "
+            "WHERE is_active=1 ORDER BY full_name"
+        ).fetchall()
+        conn.close()
+
+        user_opts = {
+            f"{u['full_name']} ({u['username']})":
+            u["id"] for u in users
+        }
+
+        with st.form("change_pwd_form"):
+            sel_user = st.selectbox(
+                "Select User *",
+                list(user_opts.keys()))
+            new_pwd  = st.text_input(
+                "New Password *",type="password",
+                placeholder="Min 6 characters")
+            new_pwd2 = st.text_input(
+                "Confirm Password *",type="password")
+
+            change_pwd = st.form_submit_button(
+                "🔑 Change Password",
+                use_container_width=True)
+
+            if change_pwd:
+                if not new_pwd or len(new_pwd) < 6:
+                    st.error(
+                        "❌ Password min 6 characters.")
+                elif new_pwd != new_pwd2:
+                    st.error("❌ Passwords don't match.")
+                else:
+                    import bcrypt
+                    hashed = bcrypt.hashpw(
+                        new_pwd.encode(),
+                        bcrypt.gensalt()
+                    ).decode()
+                    from datetime import datetime
+                    conn = get_connection()
+                    conn.execute("""
+                        UPDATE users SET
+                            password_hash=?,
+                            updated_at=?
+                        WHERE id=?
+                    """, (
+                        hashed,
+                        datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"),
+                        user_opts[sel_user]
+                    ))
+                    conn.commit()
+                    conn.close()
+                    st.success(
+                        f"✅ Password changed for "
+                        f"{sel_user}!")
 
 
 # ══════════════════════════════════════════════════════════
@@ -2763,14 +3689,16 @@ def show_login_page():
     _,col,_ = st.columns([1,1.2,1])
     with col:
         st.markdown("""
-        <div style='text-align:center;padding:20px 0 30px;'>
+        <div style='text-align:center;
+                    padding:20px 0 30px;'>
             <div style='font-size:52px;'>🍋</div>
             <p style='font-size:28px;font-weight:700;
                       color:#1e293b;margin:8px 0 0;'>
                 FQCMS</p>
             <p style='font-size:14px;color:#64748b;
                       margin:4px 0 0;'>
-                Fruit Quality Claim Management System</p>
+                Fruit Quality Claim Management System
+            </p>
         </div>
         """, unsafe_allow_html=True)
         with st.form("login_form"):
@@ -2780,13 +3708,15 @@ def show_login_page():
                 type="password",
                 placeholder="Enter your password")
             submit   = st.form_submit_button(
-                "Sign In →",use_container_width=True)
+                "Sign In →",
+                use_container_width=True)
             if submit:
                 user,error = login_user(username,password)
                 if user:
                     st.session_state.logged_in    = True
                     st.session_state.user         = user
-                    st.session_state.current_page = "dashboard"
+                    st.session_state.current_page = \
+                        "dashboard"
                     st.rerun()
                 else:
                     st.error(f"❌ {error}")
@@ -2851,7 +3781,9 @@ else:
         show_settlements(user)
     elif page == "mgmt_dashboard":
         show_mgmt_dashboard(user)
+    elif page == "export":
+        show_export(user)
     elif page == "admin":
-        show_coming_soon("Admin Settings","⚙️")
+        show_admin(user)
     else:
         show_dashboard(user)
