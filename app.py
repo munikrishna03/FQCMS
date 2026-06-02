@@ -383,7 +383,15 @@ def show_dashboard(user):
             """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.info("🚧 Full module pages are being built. Each will appear here as navigation links.")
+  # ── Module Navigation Links ─────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📋 Submit a New Claim", use_container_width=True):
+            st.switch_page("pages/01_claim_portal.py")
+    with col2:
+        st.info("🚧 More modules coming soon...")
 
 
 def show_login_page():
