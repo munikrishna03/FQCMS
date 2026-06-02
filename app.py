@@ -15,7 +15,6 @@ st.set_page_config(
 
 init_database()
 
-# ── Custom CSS ─────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -23,49 +22,86 @@ st.markdown("""
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
+
 .stApp {
     background: linear-gradient(135deg, #0f1117 0%, #1a1d2e 50%, #0f1117 100%);
 }
+
+/* Input fields — white background so text is visible */
 .stTextInput > div > div > input,
-.stTextArea > div > div > textarea {
-    background: rgba(255,255,255,0.06) !important;
-    border: 1px solid rgba(255,255,255,0.12) !important;
+.stTextArea > div > div > textarea,
+.stNumberInput > div > div > input {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
     border-radius: 8px !important;
-    color: #ffffff !important;
+    color: #111827 !important;
+    caret-color: #111827 !important;
 }
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus,
+.stNumberInput > div > div > input:focus {
+    background: #ffffff !important;
+    border-color: #4f8ef7 !important;
+    color: #111827 !important;
+    box-shadow: 0 0 0 2px rgba(79,142,247,0.25) !important;
+}
+
+.stTextInput > div > div > input::placeholder,
+.stTextArea > div > div > textarea::placeholder {
+    color: #9ca3af !important;
+}
+
+/* Labels */
 .stTextInput label, .stTextArea label,
 .stSelectbox label, .stDateInput label,
 .stNumberInput label {
-    color: #8892a4 !important;
+    color: #cbd5e1 !important;
     font-size: 13px !important;
     font-weight: 500 !important;
 }
+
+/* Selectbox */
+.stSelectbox > div > div {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 8px !important;
+    color: #111827 !important;
+}
+
+/* Buttons */
 .stButton > button {
-    background: linear-gradient(135deg, #4f8ef7 0%, #7c3aed 100%);
+    background: linear-gradient(135deg, #4f8ef7 0%, #7c3aed 100%) !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
+    transition: all 0.2s ease !important;
 }
+
 .stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 25px rgba(79,142,247,0.4);
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 25px rgba(79,142,247,0.4) !important;
 }
-/* Sidebar styling */
+
+/* Sidebar */
 [data-testid="stSidebar"] {
     background: #12151f !important;
     border-right: 1px solid rgba(255,255,255,0.08) !important;
 }
+
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     color: #8892a4 !important;
-    width: 100%;
+    width: 100% !important;
     text-align: left !important;
     padding: 8px 12px !important;
     font-size: 13px !important;
-    margin-bottom: 4px;
+    margin-bottom: 4px !important;
+    box-shadow: none !important;
 }
+
 [data-testid="stSidebar"] .stButton > button:hover {
     background: rgba(79,142,247,0.1) !important;
     color: #ffffff !important;
@@ -73,6 +109,7 @@ header {visibility: hidden;}
     transform: none !important;
     box-shadow: none !important;
 }
+
 /* Section headers */
 .section-header {
     background: rgba(79,142,247,0.08);
@@ -86,7 +123,8 @@ header {visibility: hidden;}
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-/* Ticket success */
+
+/* Ticket success card */
 .ticket-success {
     background: linear-gradient(135deg, #10b98115, #059f4615);
     border: 2px solid #10b981;
@@ -95,29 +133,31 @@ header {visibility: hidden;}
     text-align: center;
     margin: 24px 0;
 }
-.ticket-number {
-    font-size: 36px;
-    font-weight: 700;
-    color: #10b981;
-    letter-spacing: 2px;
-    margin: 12px 0;
+
+/* KPI cards */
+.kpi-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Session State ───────────────────────────────────────────
-if "logged_in"  not in st.session_state:
-    st.session_state.logged_in  = False
-if "user"       not in st.session_state:
-    st.session_state.user       = None
-if "current_page" not in st.session_state:
-    st.session_state.current_page = "dashboard"
+if "logged_in"       not in st.session_state:
+    st.session_state.logged_in       = False
+if "user"            not in st.session_state:
+    st.session_state.user            = None
+if "current_page"    not in st.session_state:
+    st.session_state.current_page    = "dashboard"
 if "claim_submitted" not in st.session_state:
     st.session_state.claim_submitted = False
 
 
 # ══════════════════════════════════════════════════════════
-# AUTH FUNCTIONS
+# AUTH
 # ══════════════════════════════════════════════════════════
 
 def login_user(username, password):
@@ -140,7 +180,7 @@ def login_user(username, password):
         if bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
             conn2 = get_connection()
             conn2.execute(
-                "UPDATE users SET last_login_at = datetime('now') WHERE id = ?",
+                "UPDATE users SET last_login_at = datetime('now') WHERE id=?",
                 (row["id"],)
             )
             conn2.commit()
@@ -152,7 +192,7 @@ def login_user(username, password):
 
 
 # ══════════════════════════════════════════════════════════
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # ══════════════════════════════════════════════════════════
 
 def show_sidebar(user):
@@ -166,10 +206,9 @@ def show_sidebar(user):
     color = role_colors.get(role, "#ffffff")
 
     with st.sidebar:
-        # Logo
         st.markdown(f"""
         <div style='padding:16px 8px 8px 8px; text-align:center;'>
-            <div style='font-size:32px;'>🍋</div>
+            <div style='font-size:36px;'>🍋</div>
             <div style='color:#ffffff; font-weight:700;
                         font-size:18px; margin-top:4px;'>FQCMS</div>
             <div style='color:#8892a4; font-size:11px;'>
@@ -179,9 +218,8 @@ def show_sidebar(user):
 
         st.divider()
 
-        # User info
         st.markdown(f"""
-        <div style='padding:8px; background:rgba(255,255,255,0.04);
+        <div style='padding:10px; background:rgba(255,255,255,0.04);
                     border-radius:8px; margin-bottom:12px;'>
             <div style='color:#ffffff; font-weight:600;
                         font-size:13px;'>👤 {user['full_name']}</div>
@@ -190,11 +228,11 @@ def show_sidebar(user):
         </div>
         """, unsafe_allow_html=True)
 
-        # Navigation
-        st.markdown("<div style='color:#8892a4; font-size:11px; "
-                    "text-transform:uppercase; letter-spacing:1px; "
-                    "padding:4px 0; font-weight:600;'>Navigation</div>",
-                    unsafe_allow_html=True)
+        st.markdown("""
+        <div style='color:#8892a4; font-size:11px; font-weight:600;
+                    text-transform:uppercase; letter-spacing:1px;
+                    padding:4px 0 8px 0;'>Navigation</div>
+        """, unsafe_allow_html=True)
 
         if st.button("🏠  Home Dashboard", key="nav_home"):
             st.session_state.current_page    = "dashboard"
@@ -222,7 +260,7 @@ def show_sidebar(user):
                 st.rerun()
 
         if role in ["Admin", "Quality Manager"]:
-            if st.button("📊  Dashboard", key="nav_dash"):
+            if st.button("📊  Dashboard", key="nav_mgmt"):
                 st.session_state.current_page = "mgmt_dashboard"
                 st.rerun()
 
@@ -234,14 +272,13 @@ def show_sidebar(user):
         st.divider()
 
         if st.button("🚪  Logout", key="nav_logout"):
-            st.session_state.logged_in    = False
-            st.session_state.user         = None
-            st.session_state.current_page = "dashboard"
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.rerun()
 
 
 # ══════════════════════════════════════════════════════════
-# HOME DASHBOARD PAGE
+# HOME DASHBOARD
 # ══════════════════════════════════════════════════════════
 
 def show_dashboard(user):
@@ -254,7 +291,6 @@ def show_dashboard(user):
     }
     color = role_colors.get(role, "#ffffff")
 
-    # Header
     st.markdown(f"""
     <div style='background:rgba(255,255,255,0.03);
                 border:1px solid rgba(255,255,255,0.08);
@@ -272,14 +308,15 @@ def show_dashboard(user):
     </div>
     """, unsafe_allow_html=True)
 
-    # KPI Cards
     conn   = get_connection()
     total  = conn.execute("SELECT COUNT(*) FROM claims").fetchone()[0]
     open_c = conn.execute(
-        "SELECT COUNT(*) FROM claims WHERE status NOT IN ('Resolved','Closed')"
+        "SELECT COUNT(*) FROM claims "
+        "WHERE status NOT IN ('Resolved','Closed')"
     ).fetchone()[0]
     closed = conn.execute(
-        "SELECT COUNT(*) FROM claims WHERE status IN ('Resolved','Closed')"
+        "SELECT COUNT(*) FROM claims "
+        "WHERE status IN ('Resolved','Closed')"
     ).fetchone()[0]
     conn.close()
 
@@ -307,25 +344,27 @@ def show_dashboard(user):
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
     <h4 style='color:#ffffff; margin-bottom:16px;'>
-        📌 Quick Navigation
+        📌 Quick Actions
     </h4>
     """, unsafe_allow_html=True)
 
-    # Quick action cards
     qa1, qa2, qa3 = st.columns(3)
     with qa1:
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;'>
-            <div style='font-size:24px;'>📋</div>
+                    border-radius:10px; padding:18px;
+                    margin-bottom:8px;'>
+            <div style='font-size:28px;'>📋</div>
             <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>Submit a Claim</div>
-            <div style='color:#8892a4; font-size:12px;
-                        margin-top:4px;'>Lodge a quality complaint</div>
+                        font-size:14px; margin-top:8px;'>
+                Submit a Claim</div>
+            <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                Lodge a quality complaint</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open →", key="qa_claim"):
+        if st.button("Open Claim Form →",
+                     key="qa_claim", use_container_width=True):
             st.session_state.current_page    = "claim_portal"
             st.session_state.claim_submitted = False
             st.rerun()
@@ -334,15 +373,18 @@ def show_dashboard(user):
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;'>
-            <div style='font-size:24px;'>🎫</div>
+                    border-radius:10px; padding:18px;
+                    margin-bottom:8px;'>
+            <div style='font-size:28px;'>🎫</div>
             <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>Helpdesk Board</div>
-            <div style='color:#8892a4; font-size:12px;
-                        margin-top:4px;'>Manage all tickets</div>
+                        font-size:14px; margin-top:8px;'>
+                Helpdesk Board</div>
+            <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                View all tickets</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open →", key="qa_helpdesk"):
+        if st.button("Open Helpdesk →",
+                     key="qa_helpdesk", use_container_width=True):
             st.session_state.current_page = "helpdesk"
             st.rerun()
 
@@ -350,24 +392,27 @@ def show_dashboard(user):
         st.markdown("""
         <div style='background:rgba(255,255,255,0.04);
                     border:1px solid rgba(255,255,255,0.08);
-                    border-radius:10px; padding:18px;'>
-            <div style='font-size:24px;'>📊</div>
+                    border-radius:10px; padding:18px;
+                    margin-bottom:8px;'>
+            <div style='font-size:28px;'>📊</div>
             <div style='color:#ffffff; font-weight:600;
-                        font-size:14px; margin-top:8px;'>Dashboard</div>
-            <div style='color:#8892a4; font-size:12px;
-                        margin-top:4px;'>KPI reports & analytics</div>
+                        font-size:14px; margin-top:8px;'>
+                Dashboard</div>
+            <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                KPI reports</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Open →", key="qa_dash"):
+        if st.button("Open Dashboard →",
+                     key="qa_dash", use_container_width=True):
             st.session_state.current_page = "mgmt_dashboard"
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.info("🚧 More modules are being built. Use the left sidebar to navigate.")
+    st.info("👈 Use the left sidebar to navigate between all modules.")
 
 
 # ══════════════════════════════════════════════════════════
-# CLAIM PORTAL PAGE
+# CLAIM PORTAL — DB HELPERS
 # ══════════════════════════════════════════════════════════
 
 def get_products():
@@ -381,7 +426,8 @@ def get_products():
 def get_defects(product_id):
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, name FROM defect_types WHERE product_id=? AND is_active=1",
+        "SELECT id, name FROM defect_types "
+        "WHERE product_id=? AND is_active=1 ORDER BY name",
         (product_id,)
     ).fetchall()
     conn.close()
@@ -399,33 +445,34 @@ def get_customers():
 def generate_ticket_number():
     conn = get_connection()
     conn.execute(
-        "UPDATE ticket_counter SET last_value = last_value + 1 WHERE id = 1"
+        "UPDATE ticket_counter SET last_value = last_value + 1 WHERE id=1"
     )
     conn.commit()
     row = conn.execute(
-        "SELECT last_value FROM ticket_counter WHERE id = 1"
+        "SELECT last_value FROM ticket_counter WHERE id=1"
     ).fetchone()
     conn.close()
     return f"FRUIT-{row['last_value']:06d}"
 
 def submit_claim(data):
     from datetime import datetime, timedelta
-    conn    = get_connection()
-    cursor  = conn.cursor()
-    ticket  = generate_ticket_number()
+    conn   = get_connection()
+    cursor = conn.cursor()
+    ticket = generate_ticket_number()
     sla_map = {"Critical": (2, 24), "Major": (4, 48), "Minor": (8, 72)}
     rh, resh = sla_map[data["priority"]]
-    now      = datetime.now()
-    r_due    = (now + timedelta(hours=rh)).strftime("%Y-%m-%d %H:%M:%S")
-    res_due  = (now + timedelta(hours=resh)).strftime("%Y-%m-%d %H:%M:%S")
+    now     = datetime.now()
+    r_due   = (now + timedelta(hours=rh)).strftime("%Y-%m-%d %H:%M:%S")
+    res_due = (now + timedelta(hours=resh)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         cursor.execute("""
             INSERT INTO claims (
                 ticket_number, customer_id, product_id, defect_type_id,
                 invoice_number, invoice_date, quantity_received,
                 quantity_claimed, quantity_unit, defect_description,
-                priority, status, sla_response_due_at, sla_resolution_due_at,
-                submitted_by_name, submitted_by_email, submitted_by_mobile
+                priority, status, sla_response_due_at,
+                sla_resolution_due_at, submitted_by_name,
+                submitted_by_email, submitted_by_mobile
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'New',?,?,?,?,?)
         """, (
             ticket, data["customer_id"], data["product_id"],
@@ -433,18 +480,18 @@ def submit_claim(data):
             data["invoice_date"], data["quantity_received"],
             data["quantity_claimed"], data["quantity_unit"],
             data["defect_description"], data["priority"],
-            r_due, res_due,
-            data["contact_name"], data["email"], data["mobile"],
+            r_due, res_due, data["contact_name"],
+            data["email"], data["mobile"],
         ))
         cid = cursor.lastrowid
         cursor.execute(
-            "INSERT INTO sla_tracking (claim_id,priority,"
-            "response_due_at,resolution_due_at) VALUES (?,?,?,?)",
+            "INSERT INTO sla_tracking (claim_id, priority, "
+            "response_due_at, resolution_due_at) VALUES (?,?,?,?)",
             (cid, data["priority"], r_due, res_due)
         )
         cursor.execute(
-            "INSERT INTO audit_logs (claim_id,action,entity_type,"
-            "entity_id,new_value) VALUES (?,'CLAIM_CREATED','claim',?,?)",
+            "INSERT INTO audit_logs (claim_id, action, entity_type, "
+            "entity_id, new_value) VALUES (?,'CLAIM_CREATED','claim',?,?)",
             (cid, cid, ticket)
         )
         conn.commit()
@@ -455,188 +502,285 @@ def submit_claim(data):
         conn.close()
         return None, str(e)
 
+
+# ══════════════════════════════════════════════════════════
+# CLAIM PORTAL PAGE
+# ══════════════════════════════════════════════════════════
+
 def show_claim_portal():
     from datetime import date
 
+    # ── Success Screen ───────────────────────────────────
     if st.session_state.claim_submitted:
-        data  = st.session_state.get("submitted_data", {})
-        pcolors = {"Critical":"#ef4444","Major":"#f59e0b","Minor":"#10b981"}
-        pcolor  = pcolors.get(data.get("priority","Minor"),"#10b981")
+        data = st.session_state.get("submitted_data", {})
+        pcolors = {
+            "Critical": "#ef4444",
+            "Major":    "#f59e0b",
+            "Minor":    "#10b981"
+        }
+        pcolor = pcolors.get(data.get("priority", "Minor"), "#10b981")
+
         st.markdown(f"""
         <div style='background:linear-gradient(135deg,#10b98115,#059f4615);
                     border:2px solid #10b981; border-radius:16px;
-                    padding:32px; text-align:center; margin:24px 0;'>
-            <div style='font-size:48px;'>✅</div>
-            <div style='color:#8892a4; font-size:13px;
-                        text-transform:uppercase; letter-spacing:1px;'>
-                Claim Submitted Successfully</div>
-            <div style='font-size:36px; font-weight:700; color:#10b981;
-                        letter-spacing:2px; margin:12px 0;'>
-                {st.session_state.ticket_number}</div>
+                    padding:40px; text-align:center; margin:24px 0;'>
+            <div style='font-size:56px;'>✅</div>
+            <div style='color:#8892a4; font-size:13px; font-weight:600;
+                        text-transform:uppercase; letter-spacing:1px;
+                        margin-top:12px;'>
+                Claim Submitted Successfully
+            </div>
+            <div style='font-size:40px; font-weight:700; color:#10b981;
+                        letter-spacing:3px; margin:16px 0;'>
+                {st.session_state.ticket_number}
+            </div>
             <div style='color:#8892a4; font-size:14px;'>
-                Save this ticket number for future reference</div>
-            <div style='margin-top:20px; color:#ffffff; font-size:14px;'>
-                Product: <b>{data.get("product_name","")}</b> &nbsp;·&nbsp;
-                Priority: <b style='color:{pcolor};'>
-                {data.get("priority","")}</b> &nbsp;·&nbsp;
-                Status: <b style='color:#4f8ef7;'>New</b>
+                Save this ticket number for future reference
+            </div>
+            <div style='margin-top:20px; font-size:14px;'>
+                <span style='color:#8892a4;'>Product:</span>
+                <span style='color:#fff; font-weight:600;'>
+                    &nbsp;{data.get("product_name","")}</span>
+                &nbsp;&nbsp;·&nbsp;&nbsp;
+                <span style='color:#8892a4;'>Priority:</span>
+                <span style='color:{pcolor}; font-weight:600;'>
+                    &nbsp;{data.get("priority","")}</span>
+                &nbsp;&nbsp;·&nbsp;&nbsp;
+                <span style='color:#8892a4;'>Status:</span>
+                <span style='color:#4f8ef7; font-weight:600;'>
+                    &nbsp;New</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
-        st.info("📧 Our quality team will contact you within the SLA timeline.")
-        if st.button("📋 Submit Another Claim"):
-            st.session_state.claim_submitted = False
-            st.rerun()
+
+        st.info("📧 Our quality team will contact you within the SLA "
+                "timeline. Please quote your ticket number in all "
+                "communications.")
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("📋 Submit Another Claim",
+                         use_container_width=True):
+                st.session_state.claim_submitted = False
+                st.rerun()
+        with col_b:
+            if st.button("🏠 Back to Dashboard",
+                         use_container_width=True):
+                st.session_state.claim_submitted = False
+                st.session_state.current_page    = "dashboard"
+                st.rerun()
         return
 
-    # ── Claim Form ───────────────────────────────────────
+    # ── Form Header ──────────────────────────────────────
     st.markdown("""
-    <div style='padding:8px 0 24px 0;'>
-        <h2 style='color:#ffffff; margin:0;'>📋 Submit a Quality Claim</h2>
-        <p style='color:#8892a4; margin:4px 0 0 0; font-size:14px;'>
-            Fill in all required fields to lodge a fruit quality complaint.
+    <div style='padding:8px 0 20px 0;'>
+        <h2 style='color:#ffffff; margin:0;'>
+            📋 Submit a Quality Claim
+        </h2>
+        <p style='color:#8892a4; margin:6px 0 0 0; font-size:14px;'>
+            Fill in all fields marked * to lodge a fruit quality complaint.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    customers     = get_customers()
-    products      = get_products()
-    cust_options  = {f"{c['customer_code']} — {c['customer_name']}": c["id"]
-                     for c in customers}
-    prod_options  = {p["name"]: p["id"] for p in products}
+    customers    = get_customers()
+    products     = get_products()
+    cust_options = {
+        f"{c['customer_code']} — {c['customer_name']}": c["id"]
+        for c in customers
+    }
+    prod_options = {p["name"]: p["id"] for p in products}
 
-    with st.form("claim_form"):
+    # ── Product & Defect OUTSIDE form for live update ────
+    st.markdown("<div class='section-header'>🍋 Product & Defect</div>",
+                unsafe_allow_html=True)
+    pd1, pd2 = st.columns(2)
+    with pd1:
+        sel_prod = st.selectbox(
+            "Product *",
+            list(prod_options.keys()),
+            key="product_selector"
+        )
+    with pd2:
+        defect_rows    = get_defects(prod_options[sel_prod])
+        defect_options = {d["name"]: d["id"] for d in defect_rows}
+        sel_defect     = st.selectbox(
+            "Defect Type *",
+            list(defect_options.keys()),
+            key="defect_selector"
+        )
+
+    # ── Rest of form ─────────────────────────────────────
+    with st.form("claim_form", clear_on_submit=False):
 
         # Customer Info
-        st.markdown("<div class='section-header'>👤 Customer Information</div>",
-                    unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
-        with col1:
-            sel_cust     = st.selectbox("Customer *", list(cust_options.keys()))
-            contact_name = st.text_input("Contact Person *",
-                                         placeholder="Your full name")
-        with col2:
-            email  = st.text_input("Email Address *",
-                                   placeholder="your@email.com")
-            mobile = st.text_input("Mobile Number *",
-                                   placeholder="10-digit number")
+        st.markdown(
+            "<div class='section-header'>👤 Customer Information</div>",
+            unsafe_allow_html=True
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            sel_cust = st.selectbox(
+                "Customer *", list(cust_options.keys())
+            )
+            contact_name = st.text_input(
+                "Contact Person *", placeholder="Your full name"
+            )
+        with c2:
+            email = st.text_input(
+                "Email Address *", placeholder="your@email.com"
+            )
+            mobile = st.text_input(
+                "Mobile Number *", placeholder="10-digit number"
+            )
 
         # Invoice
-        st.markdown("<div class='section-header'>🧾 Invoice Details</div>",
-                    unsafe_allow_html=True)
-        col3, col4, col5 = st.columns(3)
-        with col3:
-            invoice_number = st.text_input("Invoice Number *",
-                                           placeholder="INV-2024-001")
-        with col4:
-            invoice_date = st.date_input("Invoice Date *",
-                                         value=date.today(),
-                                         max_value=date.today())
-        with col5:
-            qty_unit = st.selectbox("Unit",
-                                    ["KG","Box","Carton","Punnet","Piece"])
+        st.markdown(
+            "<div class='section-header'>🧾 Invoice Details</div>",
+            unsafe_allow_html=True
+        )
+        c3, c4, c5 = st.columns(3)
+        with c3:
+            invoice_number = st.text_input(
+                "Invoice Number *", placeholder="INV-2024-001"
+            )
+        with c4:
+            invoice_date = st.date_input(
+                "Invoice Date *",
+                value=date.today(),
+                max_value=date.today()
+            )
+        with c5:
+            qty_unit = st.selectbox(
+                "Unit", ["KG", "Box", "Carton", "Punnet", "Piece"]
+            )
 
-        # Product & Defect
-        st.markdown("<div class='section-header'>🍋 Product & Defect</div>",
-                    unsafe_allow_html=True)
-        col6, col7 = st.columns(2)
-        with col6:
-            sel_prod = st.selectbox("Product *", list(prod_options.keys()))
-        with col7:
-            defect_rows    = get_defects(prod_options[sel_prod])
-            defect_options = {d["name"]: d["id"] for d in defect_rows}
-            sel_defect     = st.selectbox("Defect Type *",
-                                          list(defect_options.keys()))
-
-        col8, col9, col10 = st.columns(3)
-        with col8:
-            qty_received = st.number_input("Qty Received *",
-                                           min_value=0.0, step=0.5,
-                                           format="%.1f")
-        with col9:
-            qty_claimed = st.number_input("Qty Claimed *",
-                                          min_value=0.0, step=0.5,
-                                          format="%.1f")
-        with col10:
-            priority = st.selectbox("Priority *",
-                                    ["Minor","Major","Critical"])
+        # Quantity & Priority
+        st.markdown(
+            "<div class='section-header'>📦 Quantity & Priority</div>",
+            unsafe_allow_html=True
+        )
+        c6, c7, c8 = st.columns(3)
+        with c6:
+            qty_received = st.number_input(
+                "Quantity Received *",
+                min_value=0.0, step=0.5, format="%.1f"
+            )
+        with c7:
+            qty_claimed = st.number_input(
+                "Quantity Claimed *",
+                min_value=0.0, step=0.5, format="%.1f"
+            )
+        with c8:
+            priority = st.selectbox(
+                "Priority *", ["Minor", "Major", "Critical"]
+            )
 
         # Description
-        st.markdown("<div class='section-header'>📝 Description</div>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section-header'>📝 Defect Description</div>",
+            unsafe_allow_html=True
+        )
         description = st.text_area(
             "Describe the defect in detail *",
-            placeholder="Describe the quality issue, number of units "
-                        "affected, when noticed...",
-            height=120
+            placeholder="Describe the quality issue clearly — "
+                        "how many units affected, when noticed, "
+                        "storage conditions etc...",
+            height=130
         )
 
         # SLA Guide
-        st.markdown("<div class='section-header'>ℹ️ SLA Guide</div>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            "<div class='section-header'>ℹ️ Priority & SLA Guide</div>",
+            unsafe_allow_html=True
+        )
         g1, g2, g3 = st.columns(3)
         with g1:
-            st.markdown("""<div style='background:rgba(239,68,68,0.08);
-                border:1px solid rgba(239,68,68,0.3);border-radius:8px;
-                padding:12px;'><div style='color:#ef4444;font-weight:700;'>
-                🔴 Critical</div><div style='color:#8892a4;font-size:12px;
-                margin-top:4px;'>Response: 2h · Resolution: 24h</div>
-                </div>""", unsafe_allow_html=True)
+            st.markdown("""
+            <div style='background:rgba(239,68,68,0.08);
+                border:1px solid rgba(239,68,68,0.3);
+                border-radius:8px; padding:12px;'>
+                <div style='color:#ef4444; font-weight:700;'>
+                    🔴 Critical</div>
+                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                    Response: 2h<br>Resolution: 24h<br>
+                    Total product loss
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with g2:
-            st.markdown("""<div style='background:rgba(245,158,11,0.08);
-                border:1px solid rgba(245,158,11,0.3);border-radius:8px;
-                padding:12px;'><div style='color:#f59e0b;font-weight:700;'>
-                🟡 Major</div><div style='color:#8892a4;font-size:12px;
-                margin-top:4px;'>Response: 4h · Resolution: 48h</div>
-                </div>""", unsafe_allow_html=True)
+            st.markdown("""
+            <div style='background:rgba(245,158,11,0.08);
+                border:1px solid rgba(245,158,11,0.3);
+                border-radius:8px; padding:12px;'>
+                <div style='color:#f59e0b; font-weight:700;'>
+                    🟡 Major</div>
+                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                    Response: 4h<br>Resolution: 48h<br>
+                    Significant quality issue
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         with g3:
-            st.markdown("""<div style='background:rgba(16,185,129,0.08);
-                border:1px solid rgba(16,185,129,0.3);border-radius:8px;
-                padding:12px;'><div style='color:#10b981;font-weight:700;'>
-                🟢 Minor</div><div style='color:#8892a4;font-size:12px;
-                margin-top:4px;'>Response: 8h · Resolution: 72h</div>
-                </div>""", unsafe_allow_html=True)
+            st.markdown("""
+            <div style='background:rgba(16,185,129,0.08);
+                border:1px solid rgba(16,185,129,0.3);
+                border-radius:8px; padding:12px;'>
+                <div style='color:#10b981; font-weight:700;'>
+                    🟢 Minor</div>
+                <div style='color:#8892a4; font-size:12px; margin-top:4px;'>
+                    Response: 8h<br>Resolution: 72h<br>
+                    Small quantity affected
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        submitted = st.form_submit_button("🚀 Submit Quality Claim",
-                                          use_container_width=True)
+
+        submitted = st.form_submit_button(
+            "🚀 Submit Quality Claim",
+            use_container_width=True
+        )
 
         if submitted:
+            # Validation
             errors = []
-            if not contact_name:
-                errors.append("Contact Person is required.")
-            if not email or "@" not in email:
-                errors.append("Valid email is required.")
-            if not mobile or len(mobile) < 10:
-                errors.append("Valid 10-digit mobile is required.")
-            if not invoice_number:
+            if not contact_name.strip():
+                errors.append("Contact Person name is required.")
+            if not email.strip() or "@" not in email:
+                errors.append("Valid email address is required.")
+            if not mobile.strip() or len(mobile.strip()) < 10:
+                errors.append("Valid 10-digit mobile number is required.")
+            if not invoice_number.strip():
                 errors.append("Invoice Number is required.")
             if qty_claimed <= 0:
                 errors.append("Quantity Claimed must be greater than 0.")
             if qty_claimed > qty_received:
-                errors.append("Quantity Claimed cannot exceed Quantity Received.")
-            if not description:
+                errors.append(
+                    "Quantity Claimed cannot exceed Quantity Received."
+                )
+            if not description.strip():
                 errors.append("Defect Description is required.")
 
             if errors:
-                for e in errors:
-                    st.error(f"❌ {e}")
+                for err in errors:
+                    st.error(f"❌ {err}")
             else:
-                ticket, err = submit_claim({
-                    "customer_id":      cust_options[sel_cust],
-                    "product_id":       prod_options[sel_prod],
-                    "product_name":     sel_prod,
-                    "defect_type_id":   defect_options[sel_defect],
-                    "invoice_number":   invoice_number,
-                    "invoice_date":     str(invoice_date),
+                ticket, error = submit_claim({
+                    "customer_id":       cust_options[sel_cust],
+                    "product_id":        prod_options[sel_prod],
+                    "product_name":      sel_prod,
+                    "defect_type_id":    defect_options[sel_defect],
+                    "invoice_number":    invoice_number.strip(),
+                    "invoice_date":      str(invoice_date),
                     "quantity_received": qty_received,
                     "quantity_claimed":  qty_claimed,
                     "quantity_unit":     qty_unit,
-                    "defect_description": description,
+                    "defect_description": description.strip(),
                     "priority":          priority,
-                    "contact_name":      contact_name,
-                    "email":             email,
-                    "mobile":            mobile,
+                    "contact_name":      contact_name.strip(),
+                    "email":             email.strip(),
+                    "mobile":            mobile.strip(),
                 })
                 if ticket:
                     st.session_state.claim_submitted = True
@@ -647,11 +791,11 @@ def show_claim_portal():
                     }
                     st.rerun()
                 else:
-                    st.error(f"❌ Submission failed: {err}")
+                    st.error(f"❌ Submission failed: {error}")
 
 
 # ══════════════════════════════════════════════════════════
-# COMING SOON PAGE
+# COMING SOON
 # ══════════════════════════════════════════════════════════
 
 def show_coming_soon(title, icon):
@@ -660,7 +804,7 @@ def show_coming_soon(title, icon):
         <div style='font-size:64px;'>{icon}</div>
         <h2 style='color:#ffffff; margin:16px 0 8px 0;'>{title}</h2>
         <p style='color:#8892a4; font-size:15px;'>
-            This module is being built. Coming soon!
+            This module is being built. Coming very soon!
         </p>
         <div style='background:rgba(79,142,247,0.08);
                     border:1px solid rgba(79,142,247,0.2);
@@ -683,21 +827,26 @@ def show_login_page():
     with col:
         st.markdown("""
         <div style='text-align:center; padding:20px 0 30px 0;'>
-            <div style='font-size:48px;'>🍋</div>
-            <p style='font-size:28px; font-weight:700;
-                      color:#ffffff; margin:8px 0 0 0;'>FQCMS</p>
+            <div style='font-size:52px;'>🍋</div>
+            <p style='font-size:28px; font-weight:700; color:#ffffff;
+                      margin:8px 0 0 0;'>FQCMS</p>
             <p style='font-size:14px; color:#8892a4; margin:4px 0 0 0;'>
-                Fruit Quality Claim Management System</p>
+                Fruit Quality Claim Management System
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
         with st.form("login_form"):
-            username = st.text_input("Username",
-                                     placeholder="Enter your username")
-            password = st.text_input("Password", type="password",
-                                     placeholder="Enter your password")
-            submit   = st.form_submit_button("Sign In →",
-                                             use_container_width=True)
+            username = st.text_input(
+                "Username", placeholder="Enter your username"
+            )
+            password = st.text_input(
+                "Password", type="password",
+                placeholder="Enter your password"
+            )
+            submit = st.form_submit_button(
+                "Sign In →", use_container_width=True
+            )
             if submit:
                 user, error = login_user(username, password)
                 if user:
@@ -717,22 +866,19 @@ def show_login_page():
                         margin-bottom:10px;'>
                 🔑 Demo Credentials — Password: Admin@1234
             </div>
-            <div style='color:#8892a4; font-size:12px; line-height:2;'>
-                <span style='color:#fff; font-weight:500;'>admin</span>
-                → System Administrator<br>
-                <span style='color:#fff; font-weight:500;'>qmanager</span>
-                → Quality Manager<br>
-                <span style='color:#fff; font-weight:500;'>qexec1</span>
-                → Quality Executive<br>
-                <span style='color:#fff; font-weight:500;'>customer1</span>
-                → Demo Customer
+            <div style='color:#8892a4; font-size:13px; line-height:2.2;'>
+                <span style='color:#fff; font-weight:600;'>admin</span>
+                &nbsp;→ System Administrator<br>
+                <span style='color:#fff; font-weight:600;'>qmanager</span>
+                &nbsp;→ Quality Manager<br>
+                <span style='color:#fff; font-weight:600;'>qexec1</span>
+                &nbsp;→ Quality Executive<br>
+                <span style='color:#fff; font-weight:600;'>customer1</span>
+                &nbsp;→ Demo Customer
             </div>
         </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <p style='text-align:center; color:#8892a4;
-                  font-size:11px; margin-top:20px;'>
+        <p style='text-align:center; color:#8892a4; font-size:11px;
+                  margin-top:16px;'>
             🔒 Secured · Role-Based Access Control
         </p>
         """, unsafe_allow_html=True)
@@ -747,7 +893,6 @@ if not st.session_state.logged_in:
 else:
     user = st.session_state.user
     show_sidebar(user)
-
     page = st.session_state.current_page
 
     if page == "dashboard":
