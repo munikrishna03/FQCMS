@@ -3482,7 +3482,7 @@ def show_export(user):
                 key="exp_pri")
 
         conn  = get_connection()
-        query = """
+       query = """
             SELECT c.ticket_number as 'Ticket',
                    cu.customer_name as 'Customer',
                    cu.customer_code as 'Code',
@@ -3502,13 +3502,23 @@ def show_export(user):
                    u.full_name as 'Assigned To',
                    c.created_at as 'Submitted',
                    c.resolved_at as 'Resolved',
-                   c.sla_resolution_due_at as 'SLA Due'
+                   c.sla_resolution_due_at as 'SLA Due',
+                   i.root_cause_category as 'Root Cause',
+                   i.root_cause_details as 'Root Cause Details',
+                   i.findings as 'Findings',
+                   i.corrective_action as 'Corrective Action',
+                   i.preventive_action as 'Preventive Action',
+                   i.inspector_name as 'Inspector',
+                   i.inspection_date as 'Inspection Date',
+                   i.lab_report_ref as 'Lab Ref'
             FROM claims c
             JOIN customers cu ON c.customer_id=cu.id
             JOIN products p   ON c.product_id=p.id
             JOIN defect_types dt
                 ON c.defect_type_id=dt.id
             LEFT JOIN users u ON c.assigned_to_id=u.id
+            LEFT JOIN investigations i
+                ON c.id=i.claim_id
             WHERE 1=1
         """
         params = []
