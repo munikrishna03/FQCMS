@@ -1970,16 +1970,17 @@ def show_investigations(user):
 
            ci1,ci2 = st.columns(2)
                 with ci1:
-                    save_inv = st.form_submit_button(
-                        "💾 Save Investigation",
-                        use_container_width=True)
-                with ci2:
-                    email_inv = st.form_submit_button(
-                        "📧 Email to Manager",
-                        use_container_width=True)
-                if save_inv or email_inv:
+                    ci1,ci2 = st.columns(2)
+            with ci1:
+                save_inv = st.form_submit_button(
+                    "💾 Save Investigation",
+                    use_container_width=True)
+            with ci2:
+                email_inv = st.form_submit_button(
+                    "📧 Email to Manager",
+                    use_container_width=True)
+            if save_inv or email_inv:
                 if root_cause == "Select Root Cause":
-                    st.error("❌ Select root cause.")
                 elif not root_details.strip():
                     st.error("❌ Details required.")
                 elif not findings.strip():
