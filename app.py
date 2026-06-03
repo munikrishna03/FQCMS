@@ -1,6 +1,6 @@
 # ============================================================
 # FQCMS - Main Application Entry Point
-# app.py - FINAL COMPLETE VERSION with Collaboration
+# app.py - Supabase PostgreSQL Version
 # ============================================================
 
 import streamlit as st
@@ -12,7 +12,9 @@ import io
 import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from database.connection import init_database, get_connection
+from database.connection import (
+    init_database, get_connection, dict_cursor
+)
 
 st.set_page_config(
     page_title="FQCMS - Fruit Quality Claim System",
@@ -24,9 +26,12 @@ st.set_page_config(
 init_database()
 
 cloudinary.config(
-    cloud_name = st.secrets.get("CLOUDINARY_CLOUD_NAME",""),
-    api_key    = st.secrets.get("CLOUDINARY_API_KEY",""),
-    api_secret = st.secrets.get("CLOUDINARY_API_SECRET",""),
+    cloud_name = st.secrets.get(
+        "CLOUDINARY_CLOUD_NAME",""),
+    api_key    = st.secrets.get(
+        "CLOUDINARY_API_KEY",""),
+    api_secret = st.secrets.get(
+        "CLOUDINARY_API_SECRET",""),
     secure     = True
 )
 
@@ -41,16 +46,58 @@ header {visibility: hidden;}
 [data-testid="stMainBlockContainer"] {
     background: #f1f5f9 !important;
 }
-
-/* ── Sidebar always visible ── */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stNumberInput > div > div > input {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    color: #1e293b !important;
+    caret-color: #1e293b !important;
+}
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px
+        rgba(59,130,246,0.15) !important;
+}
+.stTextInput > div > div > input::placeholder,
+.stTextArea > div > div > textarea::placeholder {
+    color: #94a3b8 !important;
+}
+.stTextInput label, .stTextArea label,
+.stSelectbox label, .stDateInput label,
+.stNumberInput label {
+    color: #475569 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+.stSelectbox > div > div {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    color: #1e293b !important;
+}
+.stButton > button {
+    background: linear-gradient(
+        135deg,#3b82f6,#6366f1) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+}
+.stButton > button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 15px
+        rgba(59,130,246,0.35) !important;
+}
 [data-testid="stSidebar"] {
     background: #1e293b !important;
     border-right: 1px solid #334155 !important;
     min-width: 260px !important;
     max-width: 260px !important;
-    transform: none !important;
-    visibility: visible !important;
-    display: block !important;
 }
 [data-testid="stSidebar"] * {
     color: #e2e8f0 !important;
@@ -85,58 +132,6 @@ header {visibility: hidden;}
     opacity: 1 !important;
     border: 1px solid #334155 !important;
 }
-
-/* ── Inputs ── */
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea,
-.stNumberInput > div > div > input {
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important;
-    color: #1e293b !important;
-    caret-color: #1e293b !important;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus,
-.stNumberInput > div > div > input:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important;
-}
-.stTextInput > div > div > input::placeholder,
-.stTextArea > div > div > textarea::placeholder {
-    color: #94a3b8 !important;
-}
-.stTextInput label, .stTextArea label,
-.stSelectbox label, .stDateInput label,
-.stNumberInput label {
-    color: #475569 !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-}
-.stSelectbox > div > div {
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important;
-    color: #1e293b !important;
-}
-
-/* ── Buttons ── */
-.stButton > button {
-    background: linear-gradient(
-        135deg,#3b82f6,#6366f1) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    transition: all 0.2s !important;
-}
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 15px
-        rgba(59,130,246,0.35) !important;
-}
-
-/* ── Section headers ── */
 .section-header {
     background: #eff6ff;
     border-left: 4px solid #3b82f6;
@@ -149,8 +144,6 @@ header {visibility: hidden;}
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-
-/* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] {
     background: #ffffff !important;
     border-radius: 8px !important;
@@ -188,13 +181,73 @@ for key, val in {
 
 
 # ══════════════════════════════════════════════════════════
+# DB HELPER — execute query and return dict rows
+# ══════════════════════════════════════════════════════════
+
+def db_fetch(query, params=None):
+    """Execute SELECT and return list of dicts."""
+    conn   = get_connection()
+    cursor = dict_cursor(conn)
+    try:
+        cursor.execute(query, params or ())
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        cursor.close()
+        conn.close()
+
+def db_fetchone(query, params=None):
+    """Execute SELECT and return single dict."""
+    conn   = get_connection()
+    cursor = dict_cursor(conn)
+    try:
+        cursor.execute(query, params or ())
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        cursor.close()
+        conn.close()
+
+def db_execute(query, params=None):
+    """Execute INSERT/UPDATE/DELETE."""
+    conn   = get_connection()
+    cursor = dict_cursor(conn)
+    try:
+        cursor.execute(query, params or ())
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cursor.close()
+        conn.close()
+
+def db_execute_returning(query, params=None):
+    """Execute INSERT RETURNING and return row."""
+    conn   = get_connection()
+    cursor = dict_cursor(conn)
+    try:
+        cursor.execute(query, params or ())
+        row = cursor.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════
 # EMAIL FUNCTIONS
 # ══════════════════════════════════════════════════════════
 
 def send_email_base(to_email, subject, html):
     try:
         gmail    = st.secrets.get("GMAIL_ADDRESS","")
-        app_pass = st.secrets.get("GMAIL_APP_PASSWORD","")
+        app_pass = st.secrets.get(
+            "GMAIL_APP_PASSWORD","")
         if not gmail or not app_pass:
             return False
         msg            = MIMEMultipart("alternative")
@@ -232,8 +285,8 @@ def email_wrap(body):
 def send_confirmation_email(to_email, customer_name,
                              ticket_number, product,
                              defect, priority):
-    pcolors = {"Critical":"#ef4444","Major":"#f59e0b",
-               "Minor":"#10b981"}
+    pcolors = {"Critical":"#ef4444",
+               "Major":"#f59e0b","Minor":"#10b981"}
     pcolor  = pcolors.get(priority,"#10b981")
     sla_map = {
         "Critical":"2h response | 24h resolution",
@@ -244,36 +297,21 @@ def send_confirmation_email(to_email, customer_name,
     <h2 style="color:#1e293b;">✅ Claim Received</h2>
     <p style="color:#475569;">Dear <strong>
     {customer_name}</strong>,<br>your claim has been
-    received and registered in our system.</p>
+    received.</p>
     <div style="background:#f0fdf4;border:2px solid
     #10b981;border-radius:10px;padding:20px;
     text-align:center;margin:20px 0;">
-    <p style="color:#64748b;font-size:12px;
-    text-transform:uppercase;margin:0;">
-    Your Ticket Number</p>
     <p style="color:#10b981;font-size:32px;
     font-weight:700;letter-spacing:3px;margin:8px 0;">
-    {ticket_number}</p>
-    <p style="color:#64748b;font-size:12px;margin:0;">
-    Quote this in all communications</p></div>
-    <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:8px;color:#475569;width:40%;
-    border-bottom:1px solid #e2e8f0;">Product</td>
-    <td style="padding:8px;color:#1e293b;font-weight:600;
-    border-bottom:1px solid #e2e8f0;">{product}</td></tr>
-    <tr><td style="padding:8px;color:#475569;
-    border-bottom:1px solid #e2e8f0;">Defect</td>
-    <td style="padding:8px;color:#1e293b;font-weight:600;
-    border-bottom:1px solid #e2e8f0;">{defect}</td></tr>
-    <tr><td style="padding:8px;color:#475569;">Priority
-    </td><td style="padding:8px;color:{pcolor};
-    font-weight:700;">{priority}<br>
-    <small style="color:#475569;">
-    {sla_map.get(priority,"")}</small></td></tr>
-    </table></div>"""
+    {ticket_number}</p></div>
+    <p style="color:#475569;">
+    Product: <strong>{product}</strong> |
+    Priority: <strong style="color:{pcolor};">
+    {priority}</strong><br>
+    SLA: {sla_map.get(priority,"")}</p></div>"""
     return send_email_base(
         to_email,
-        f"✅ Claim {ticket_number} Received | FQCMS",
+        f"✅ Claim {ticket_number} | FQCMS",
         email_wrap(body)
     ), "Sent"
 
@@ -284,33 +322,22 @@ def send_assignment_email(to_email, assignee_name,
     <h2 style="color:#1e293b;">
     🎫 Ticket Assigned to You</h2>
     <p style="color:#475569;">Dear <strong>
-    {assignee_name}</strong>,<br>a quality claim has
-    been assigned to you for investigation.</p>
-    <div style="background:#eff6ff;border:2px solid
-    #3b82f6;border-radius:10px;padding:20px;
-    text-align:center;margin:20px 0;">
-    <p style="color:#3b82f6;font-size:28px;
-    font-weight:700;letter-spacing:3px;margin:8px 0;">
-    {ticket_number}</p></div>
+    {assignee_name}</strong>,<br>claim
+    <strong>{ticket_number}</strong> has been
+    assigned to you.</p>
     <table style="width:100%;border-collapse:collapse;">
     <tr><td style="padding:8px;color:#475569;width:40%;
     border-bottom:1px solid #e2e8f0;">Customer</td>
     <td style="padding:8px;color:#1e293b;font-weight:600;
     border-bottom:1px solid #e2e8f0;">
     {customer_name}</td></tr>
-    <tr><td style="padding:8px;color:#475569;
-    border-bottom:1px solid #e2e8f0;">Product</td>
-    <td style="padding:8px;color:#1e293b;font-weight:600;
-    border-bottom:1px solid #e2e8f0;">{product}</td></tr>
-    <tr><td style="padding:8px;color:#475569;">Priority
-    </td><td style="padding:8px;color:#ef4444;
-    font-weight:700;">{priority}</td></tr></table>
-    <p style="color:#475569;margin-top:16px;">
-    Please login to FQCMS to investigate.</p>
-    </div>"""
+    <tr><td style="padding:8px;color:#475569;">Product
+    </td><td style="padding:8px;color:#1e293b;
+    font-weight:600;">{product}</td></tr>
+    </table></div>"""
     return send_email_base(
         to_email,
-        f"🎫 {ticket_number} Assigned to You | FQCMS",
+        f"🎫 {ticket_number} Assigned | FQCMS",
         email_wrap(body)
     )
 
@@ -318,50 +345,27 @@ def send_settlement_email(to_email, customer_name,
                            ticket_number, decision,
                            approved_qty, credit_amount,
                            currency, remarks):
-    dec_colors = {
-        "Approved":"#10b981",
-        "Partial Approval":"#f59e0b",
-        "Rejected":"#ef4444"
-    }
-    dc   = dec_colors.get(decision,"#64748b")
-    di   = {"Approved":"✅","Partial Approval":"⚡",
-            "Rejected":"❌"}.get(decision,"📋")
+    dc = {"Approved":"#10b981",
+          "Partial Approval":"#f59e0b",
+          "Rejected":"#ef4444"}.get(decision,"#64748b")
+    di = {"Approved":"✅","Partial Approval":"⚡",
+          "Rejected":"❌"}.get(decision,"📋")
     body = f"""<div style="padding:32px;">
-    <h2 style="color:#1e293b;">{di} Settlement Update
-    </h2>
+    <h2 style="color:#1e293b;">
+    {di} Settlement Update</h2>
     <p style="color:#475569;">Dear <strong>
-    {customer_name}</strong>,<br>your claim settlement
-    has been processed.</p>
-    <div style="background:#f8fafc;border:2px solid
-    {dc};border-radius:10px;padding:20px;
-    text-align:center;margin:20px 0;">
-    <p style="color:{dc};font-size:28px;font-weight:700;
-    letter-spacing:3px;margin:8px 0;">{ticket_number}
+    {customer_name}</strong>,<br>your claim
+    {ticket_number} settlement:
+    <strong style="color:{dc};">{decision}</strong>
     </p>
-    <p style="color:{dc};font-size:18px;font-weight:700;
-    margin:4px 0;">{decision}</p></div>
-    <table style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:8px;color:#475569;width:40%;
-    border-bottom:1px solid #e2e8f0;">Decision</td>
-    <td style="padding:8px;color:{dc};font-weight:700;
-    border-bottom:1px solid #e2e8f0;">{decision}</td>
-    </tr>
-    <tr><td style="padding:8px;color:#475569;
-    border-bottom:1px solid #e2e8f0;">Approved Qty</td>
-    <td style="padding:8px;color:#1e293b;font-weight:600;
-    border-bottom:1px solid #e2e8f0;">
-    {approved_qty}</td></tr>
-    <tr><td style="padding:8px;color:#475569;
-    border-bottom:1px solid #e2e8f0;">Credit Amount</td>
-    <td style="padding:8px;color:#10b981;font-weight:700;
-    font-size:16px;border-bottom:1px solid #e2e8f0;">
-    {currency} {credit_amount:,.2f}</td></tr>
-    <tr><td style="padding:8px;color:#475569;">Remarks
-    </td><td style="padding:8px;color:#1e293b;">
-    {remarks}</td></tr></table></div>"""
+    <p style="color:#475569;">
+    Approved Qty: <strong>{approved_qty}</strong><br>
+    Credit: <strong style="color:#10b981;">
+    {currency} {credit_amount:,.2f}</strong><br>
+    Remarks: {remarks}</p></div>"""
     return send_email_base(
         to_email,
-        f"{di} Settlement — {ticket_number} | FQCMS",
+        f"{di} Settlement {ticket_number} | FQCMS",
         email_wrap(body)
     )
 
@@ -376,7 +380,8 @@ def upload_to_cloudinary(file, ticket_number,
         result = cloudinary.uploader.upload(
             file,
             folder        = f"FQCMS/{ticket_number}",
-            resource_type = ("video" if file_type=="video"
+            resource_type = ("video"
+                             if file_type=="video"
                              else "image"),
             use_filename    = True,
             unique_filename = True,
@@ -396,29 +401,28 @@ def login_user(username, password):
     if not username or not password:
         return None, "Please enter both fields."
     try:
-        conn = get_connection()
-        row  = conn.execute("""
+        row = db_fetchone("""
             SELECT u.id,u.username,u.full_name,u.email,
                    u.password_hash,u.is_active,
                    r.name as role_name
-            FROM users u JOIN roles r ON u.role_id=r.id
-            WHERE u.username=?
-        """, (username.strip(),)).fetchone()
-        conn.close()
+            FROM users u JOIN roles r
+                ON u.role_id=r.id
+            WHERE u.username=%s
+        """, (username.strip(),))
         if not row:
             return None, "Invalid username or password."
         if not row["is_active"]:
             return None, "Account disabled."
-        if bcrypt.checkpw(password.encode(),
-                          row["password_hash"].encode()):
-            conn2 = get_connection()
-            conn2.execute(
+        if bcrypt.checkpw(
+            password.encode(),
+            row["password_hash"].encode()
+        ):
+            db_execute(
                 "UPDATE users SET "
-                "last_login_at=datetime('now') "
-                "WHERE id=?", (row["id"],))
-            conn2.commit()
-            conn2.close()
-            return dict(row), None
+                "last_login_at=NOW() WHERE id=%s",
+                (row["id"],)
+            )
+            return row, None
         return None, "Invalid username or password."
     except Exception as e:
         return None, str(e)
@@ -453,7 +457,8 @@ def show_sidebar(user):
         st.markdown(f"""
         <div style='padding:10px;
                     background:rgba(255,255,255,0.06);
-                    border-radius:8px;margin-bottom:12px;'>
+                    border-radius:8px;
+                    margin-bottom:12px;'>
             <div style='color:#ffffff;font-weight:600;
                         font-size:13px;'>
                 👤 {user['full_name']}</div>
@@ -471,8 +476,8 @@ def show_sidebar(user):
         """, unsafe_allow_html=True)
 
         nav_items = [
-            ("🏠  Home",          "dashboard",      True),
-            ("📋  Submit Claim",  "claim_portal",   True),
+            ("🏠  Home",          "dashboard",     True),
+            ("📋  Submit Claim",  "claim_portal",  True),
             ("🎫  Helpdesk",      "helpdesk",
              role in ["Admin","Quality Manager",
                       "Quality Executive"]),
@@ -521,8 +526,7 @@ def show_dashboard(user):
                 border:1px solid #e2e8f0;
                 border-left:4px solid {color};
                 border-radius:12px;padding:24px 28px;
-                margin-bottom:24px;
-                box-shadow:0 1px 3px rgba(0,0,0,0.06);'>
+                margin-bottom:24px;'>
         <h2 style='color:#1e293b;margin:0 0 6px;'>
             Good day, {user['full_name']}! 👋</h2>
         <p style='color:#64748b;margin:0;font-size:14px;'>
@@ -533,21 +537,20 @@ def show_dashboard(user):
     </div>
     """, unsafe_allow_html=True)
 
-    conn   = get_connection()
-    total  = conn.execute(
-        "SELECT COUNT(*) FROM claims").fetchone()[0]
-    open_c = conn.execute(
-        "SELECT COUNT(*) FROM claims "
+    total  = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims")["n"]
+    open_c = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
         "WHERE status NOT IN ('Resolved','Closed')"
-    ).fetchone()[0]
-    closed = conn.execute(
-        "SELECT COUNT(*) FROM claims "
+    )["n"]
+    closed = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
         "WHERE status IN ('Resolved','Closed')"
-    ).fetchone()[0]
-    new_c  = conn.execute(
-        "SELECT COUNT(*) FROM claims "
-        "WHERE status='New'").fetchone()[0]
-    conn.close()
+    )["n"]
+    new_c  = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
+        "WHERE status='New'"
+    )["n"]
 
     c1,c2,c3,c4 = st.columns(4)
     for col,label,value,clr,bg in [
@@ -563,10 +566,13 @@ def show_dashboard(user):
                         border-top:3px solid {clr};
                         border-radius:10px;padding:20px;
                         text-align:center;'>
-                <div style='font-size:28px;font-weight:700;
+                <div style='font-size:28px;
+                            font-weight:700;
                             color:{clr};'>{value}</div>
-                <div style='font-size:12px;color:#64748b;
-                            margin-top:4px;'>{label}</div>
+                <div style='font-size:12px;
+                            color:#64748b;
+                            margin-top:4px;'>
+                    {label}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -579,14 +585,11 @@ def show_dashboard(user):
     qa1,qa2,qa3 = st.columns(3)
     for col,icon,title,desc,key,page in [
         (qa1,"📋","Submit a Claim",
-         "Lodge a quality complaint",
-         "qa_claim","claim_portal"),
+         "Lodge a complaint","qa_claim","claim_portal"),
         (qa2,"🎫","Helpdesk Board",
-         "View all tickets",
-         "qa_help","helpdesk"),
+         "View all tickets","qa_help","helpdesk"),
         (qa3,"📊","Dashboard",
-         "KPI reports",
-         "qa_dash","mgmt_dashboard"),
+         "KPI reports","qa_dash","mgmt_dashboard"),
     ]:
         with col:
             st.markdown(f"""
@@ -595,8 +598,10 @@ def show_dashboard(user):
                         border-radius:10px;padding:18px;
                         margin-bottom:8px;'>
                 <div style='font-size:28px;'>{icon}</div>
-                <div style='color:#1e293b;font-weight:600;
-                            font-size:14px;margin-top:8px;'>
+                <div style='color:#1e293b;
+                            font-weight:600;
+                            font-size:14px;
+                            margin-top:8px;'>
                     {title}</div>
                 <div style='color:#64748b;font-size:12px;
                             margin-top:4px;'>{desc}</div>
@@ -617,65 +622,44 @@ def show_dashboard(user):
 # ══════════════════════════════════════════════════════════
 
 def get_products():
-    conn = get_connection()
-    rows = conn.execute(
+    return db_fetch(
         "SELECT id,name FROM products "
-        "WHERE is_active=1 ORDER BY name"
-    ).fetchall()
-    conn.close()
-    return rows
+        "WHERE is_active=TRUE ORDER BY name")
 
 def get_defects(product_id):
-    conn = get_connection()
-    rows = conn.execute(
+    return db_fetch(
         "SELECT id,name FROM defect_types "
-        "WHERE product_id=? AND is_active=1 ORDER BY name",
-        (product_id,)
-    ).fetchall()
-    conn.close()
-    return rows
+        "WHERE product_id=%s AND is_active=TRUE "
+        "ORDER BY name", (product_id,))
 
 def get_customers():
-    conn = get_connection()
-    rows = conn.execute(
+    return db_fetch(
         "SELECT id,customer_code,customer_name "
-        "FROM customers WHERE is_active=1 "
-        "ORDER BY customer_name"
-    ).fetchall()
-    conn.close()
-    return rows
+        "FROM customers WHERE is_active=TRUE "
+        "ORDER BY customer_name")
 
 def generate_ticket_number():
-    conn = get_connection()
-    conn.execute(
-        "UPDATE ticket_counter "
-        "SET last_value=last_value+1 WHERE id=1"
-    )
-    conn.commit()
-    row = conn.execute(
-        "SELECT last_value FROM ticket_counter WHERE id=1"
-    ).fetchone()
-    conn.close()
+    row = db_execute_returning("""
+        UPDATE ticket_counter
+        SET last_value = last_value + 1
+        WHERE id = 1
+        RETURNING last_value
+    """)
     return f"FRUIT-{row['last_value']:06d}"
 
 def save_attachment(claim_id, filename, file_type,
                     mime_type, size, url, public_id):
-    conn = get_connection()
-    conn.execute("""
+    db_execute("""
         INSERT INTO attachments (
             claim_id,original_filename,stored_filename,
             file_type,mime_type,file_size_bytes,
             gdrive_file_id,gdrive_view_url
-        ) VALUES (?,?,?,?,?,?,?,?)
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
     """, (claim_id,filename,public_id,file_type,
           mime_type,size,public_id,url))
-    conn.commit()
-    conn.close()
 
 def submit_claim(data):
     from datetime import datetime, timedelta
-    conn    = get_connection()
-    cursor  = conn.cursor()
     ticket  = generate_ticket_number()
     sla_map = {
         "Critical":(2,24),
@@ -684,49 +668,53 @@ def submit_claim(data):
     }
     rh,resh  = sla_map[data["priority"]]
     now      = datetime.now()
-    r_due    = (now+timedelta(hours=rh)).strftime(
-        "%Y-%m-%d %H:%M:%S")
-    res_due  = (now+timedelta(hours=resh)).strftime(
-        "%Y-%m-%d %H:%M:%S")
+    r_due    = now + timedelta(hours=rh)
+    res_due  = now + timedelta(hours=resh)
     try:
-        cursor.execute("""
+        row = db_execute_returning("""
             INSERT INTO claims (
                 ticket_number,customer_id,product_id,
                 defect_type_id,invoice_number,
                 invoice_date,quantity_received,
                 quantity_claimed,quantity_unit,
                 defect_description,priority,status,
-                sla_response_due_at,sla_resolution_due_at,
+                sla_response_due_at,
+                sla_resolution_due_at,
                 submitted_by_name,submitted_by_email,
                 submitted_by_mobile
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'New',?,?,?,?,?)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                      %s,%s,'New',%s,%s,%s,%s,%s)
+            RETURNING id
         """, (
-            ticket,data["customer_id"],data["product_id"],
-            data["defect_type_id"],data["invoice_number"],
-            data["invoice_date"],data["quantity_received"],
-            data["quantity_claimed"],data["quantity_unit"],
-            data["defect_description"],data["priority"],
-            r_due,res_due,data["contact_name"],
+            ticket,data["customer_id"],
+            data["product_id"],
+            data["defect_type_id"],
+            data["invoice_number"],
+            data["invoice_date"],
+            data["quantity_received"],
+            data["quantity_claimed"],
+            data["quantity_unit"],
+            data["defect_description"],
+            data["priority"],
+            r_due,res_due,
+            data["contact_name"],
             data["email"],data["mobile"],
         ))
-        cid = cursor.lastrowid
-        cursor.execute(
-            "INSERT INTO sla_tracking "
-            "(claim_id,priority,response_due_at,"
-            "resolution_due_at) VALUES (?,?,?,?)",
-            (cid,data["priority"],r_due,res_due))
-        cursor.execute(
-            "INSERT INTO audit_logs "
-            "(claim_id,action,entity_type,entity_id,"
-            "new_value) VALUES "
-            "(?,'CLAIM_CREATED','claim',?,?)",
-            (cid,cid,ticket))
-        conn.commit()
-        conn.close()
+        cid = row["id"]
+        db_execute("""
+            INSERT INTO sla_tracking
+            (claim_id,priority,
+             response_due_at,resolution_due_at)
+            VALUES (%s,%s,%s,%s)
+        """, (cid,data["priority"],r_due,res_due))
+        db_execute("""
+            INSERT INTO audit_logs
+            (claim_id,action,entity_type,
+             entity_id,new_value)
+            VALUES (%s,'CLAIM_CREATED','claim',%s,%s)
+        """, (cid,cid,ticket))
         return ticket, cid, None
     except Exception as e:
-        conn.rollback()
-        conn.close()
         return None, None, str(e)
 
 
@@ -740,7 +728,8 @@ def show_claim_portal():
         data    = st.session_state.get(
             "submitted_data",{})
         pcolors = {"Critical":"#ef4444",
-                   "Major":"#f59e0b","Minor":"#10b981"}
+                   "Major":"#f59e0b",
+                   "Minor":"#10b981"}
         pcolor  = pcolors.get(
             data.get("priority","Minor"),"#10b981")
         st.markdown(f"""
@@ -792,10 +781,12 @@ def show_claim_portal():
     customers    = get_customers()
     products     = get_products()
     cust_options = {
-        f"{c['customer_code']} — {c['customer_name']}":
-        c["id"] for c in customers
+        f"{c['customer_code']} — "
+        f"{c['customer_name']}": c["id"]
+        for c in customers
     }
-    prod_options = {p["name"]:p["id"] for p in products}
+    prod_options = {
+        p["name"]:p["id"] for p in products}
 
     st.markdown(
         "<div class='section-header'>"
@@ -807,9 +798,10 @@ def show_claim_portal():
             "Product *",list(prod_options.keys()),
             key="product_selector")
     with pd2:
-        defect_rows    = get_defects(prod_options[sel_prod])
-        defect_options = {d["name"]:d["id"]
-                          for d in defect_rows}
+        defect_rows    = get_defects(
+            prod_options[sel_prod])
+        defect_options = {
+            d["name"]:d["id"] for d in defect_rows}
         sel_defect     = st.selectbox(
             "Defect Type *",
             list(defect_options.keys()),
@@ -822,7 +814,8 @@ def show_claim_portal():
     cu1,cu2 = st.columns(2)
     with cu1:
         uploaded_photos = st.file_uploader(
-            "Photos",type=["jpg","jpeg","png","heic"],
+            "Photos",
+            type=["jpg","jpeg","png","heic"],
             accept_multiple_files=True,
             key="photo_uploader")
     with cu2:
@@ -843,7 +836,8 @@ def show_claim_portal():
         c1,c2 = st.columns(2)
         with c1:
             sel_cust     = st.selectbox(
-                "Customer *",list(cust_options.keys()))
+                "Customer *",
+                list(cust_options.keys()))
             contact_name = st.text_input(
                 "Contact Person *",
                 placeholder="Full name")
@@ -866,7 +860,8 @@ def show_claim_portal():
                 placeholder="INV-2024-001")
         with c4:
             invoice_date = st.date_input(
-                "Invoice Date *",value=date.today(),
+                "Invoice Date *",
+                value=date.today(),
                 max_value=date.today())
         with c5:
             qty_unit = st.selectbox(
@@ -937,7 +932,8 @@ def show_claim_portal():
                             defect_options[sel_defect],
                         "invoice_number":
                             invoice_number.strip(),
-                        "invoice_date":str(invoice_date),
+                        "invoice_date":
+                            str(invoice_date),
                         "quantity_received":qty_received,
                         "quantity_claimed":qty_claimed,
                         "quantity_unit":qty_unit,
@@ -959,7 +955,8 @@ def show_claim_portal():
                             if url:
                                 save_attachment(
                                     cid,f.name,"photo",
-                                    f.type,f.size,url,pid)
+                                    f.type,f.size,
+                                    url,pid)
                         for f in (uploaded_videos or []):
                             url,pid = \
                                 upload_to_cloudinary(
@@ -967,19 +964,20 @@ def show_claim_portal():
                             if url:
                                 save_attachment(
                                     cid,f.name,"video",
-                                    f.type,f.size,url,pid)
+                                    f.type,f.size,
+                                    url,pid)
                         email_sent,_ = \
                             send_confirmation_email(
                                 email.strip(),
                                 contact_name.strip(),
                                 ticket,sel_prod,
                                 sel_defect,priority)
-                        st.session_state.claim_submitted\
-                            = True
-                        st.session_state.ticket_number \
-                            = ticket
-                        st.session_state.submitted_data \
-                            = {
+                        st.session_state\
+                            .claim_submitted = True
+                        st.session_state\
+                            .ticket_number   = ticket
+                        st.session_state\
+                            .submitted_data  = {
                             "product_name": sel_prod,
                             "priority":     priority,
                             "email":        email.strip(),
@@ -1001,20 +999,26 @@ def get_priority_color(priority):
 
 def get_status_color(status):
     return {
-        "New":"#3b82f6","Assigned":"#8b5cf6",
+        "New":"#3b82f6",
+        "Assigned":"#8b5cf6",
         "Investigation":"#f59e0b",
         "Pending Approval":"#f97316",
-        "Resolved":"#10b981","Closed":"#64748b",
+        "Resolved":"#10b981",
+        "Closed":"#64748b",
     }.get(status,"#64748b")
 
 def get_ageing(created_at):
-    from datetime import datetime
+    from datetime import datetime, timezone
     try:
-        created = datetime.strptime(
-            created_at[:19],"%Y-%m-%d %H:%M:%S")
-        delta   = datetime.now() - created
-        days    = delta.days
-        hours   = delta.seconds // 3600
+        if hasattr(created_at, 'replace'):
+            created = created_at.replace(tzinfo=None)
+        else:
+            created = datetime.strptime(
+                str(created_at)[:19],
+                "%Y-%m-%d %H:%M:%S")
+        delta = datetime.now() - created
+        days  = delta.days
+        hours = delta.seconds // 3600
         if days > 0: return f"{days}d {hours}h"
         return f"{hours}h {(delta.seconds%3600)//60}m"
     except Exception:
@@ -1022,11 +1026,16 @@ def get_ageing(created_at):
 
 def get_sla_status(resolution_due, status):
     from datetime import datetime
-    if status in ("Resolved","Closed"): return "ok"
+    if status in ("Resolved","Closed"):
+        return "ok"
     try:
-        due  = datetime.strptime(
-            resolution_due[:19],"%Y-%m-%d %H:%M:%S")
-        diff = (due-datetime.now()).total_seconds()
+        if hasattr(resolution_due,'replace'):
+            due = resolution_due.replace(tzinfo=None)
+        else:
+            due = datetime.strptime(
+                str(resolution_due)[:19],
+                "%Y-%m-%d %H:%M:%S")
+        diff = (due - datetime.now()).total_seconds()
         if diff < 0:     return "breached"
         if diff < 14400: return "warning"
         return "ok"
@@ -1034,59 +1043,49 @@ def get_sla_status(resolution_due, status):
         return "ok"
 
 def update_claim_status(claim_id, new_status, user_id):
-    from datetime import datetime
-    conn = get_connection()
-    now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    old  = conn.execute(
-        "SELECT status FROM claims WHERE id=?",
-        (claim_id,)).fetchone()
+    old = db_fetchone(
+        "SELECT status FROM claims WHERE id=%s",
+        (claim_id,))
     old_status = old["status"] if old else ""
-    conn.execute(
-        "UPDATE claims SET status=?,updated_at=? "
-        "WHERE id=?",
-        (new_status,now,claim_id))
+    db_execute(
+        "UPDATE claims SET status=%s,"
+        "updated_at=NOW() WHERE id=%s",
+        (new_status,claim_id))
     if new_status == "Resolved":
-        conn.execute(
-            "UPDATE claims SET resolved_at=? WHERE id=?",
-            (now,claim_id))
+        db_execute(
+            "UPDATE claims SET resolved_at=NOW() "
+            "WHERE id=%s", (claim_id,))
     if new_status == "Closed":
-        conn.execute(
-            "UPDATE claims SET closed_at=? WHERE id=?",
-            (now,claim_id))
-    conn.execute("""
+        db_execute(
+            "UPDATE claims SET closed_at=NOW() "
+            "WHERE id=%s", (claim_id,))
+    db_execute("""
         INSERT INTO audit_logs
         (claim_id,user_id,action,entity_type,
          entity_id,old_value,new_value)
-        VALUES (?,?,'STATUS_CHANGE','claim',?,?,?)
+        VALUES (%s,%s,'STATUS_CHANGE','claim',%s,%s,%s)
     """, (claim_id,user_id,claim_id,
           old_status,new_status))
-    conn.commit()
-    conn.close()
 
 def assign_claim(claim_id, assignee_id, user_id,
                  assignee_email=None,assignee_name=None,
                  ticket_number=None,customer_name=None,
                  product=None,priority=None):
-    from datetime import datetime
-    conn = get_connection()
-    now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute("""
+    db_execute("""
         UPDATE claims
-        SET assigned_to_id=?,assigned_at=?,
+        SET assigned_to_id=%s,assigned_at=NOW(),
             status=CASE WHEN status='New'
                         THEN 'Assigned'
                         ELSE status END,
-            updated_at=?
-        WHERE id=?
-    """, (assignee_id,now,now,claim_id))
-    conn.execute("""
+            updated_at=NOW()
+        WHERE id=%s
+    """, (assignee_id,claim_id))
+    db_execute("""
         INSERT INTO audit_logs
         (claim_id,user_id,action,entity_type,
          entity_id,new_value)
-        VALUES (?,?,'ASSIGNMENT','claim',?,?)
+        VALUES (%s,%s,'ASSIGNMENT','claim',%s,%s)
     """, (claim_id,user_id,claim_id,str(assignee_id)))
-    conn.commit()
-    conn.close()
     if assignee_email and assignee_name:
         send_assignment_email(
             assignee_email,assignee_name,
@@ -1130,45 +1129,47 @@ def show_helpdesk(user):
             placeholder="Ticket / Customer",
             key="hd_srch")
 
-    conn   = get_connection()
     query  = """
-        SELECT c.id,c.ticket_number,c.status,c.priority,
-               c.created_at,c.sla_resolution_due_at,
+        SELECT c.id,c.ticket_number,c.status,
+               c.priority,c.created_at,
+               c.sla_resolution_due_at,
                cu.customer_name,p.name as product_name,
                dt.name as defect_name,
                u.full_name as assigned_to,
                u.email as assigned_email,
-               c.defect_description,c.quantity_claimed,
-               c.quantity_unit,c.submitted_by_name,
+               c.defect_description,
+               c.quantity_claimed,c.quantity_unit,
+               c.submitted_by_name,
                c.submitted_by_email
         FROM claims c
         JOIN customers cu ON c.customer_id=cu.id
         JOIN products p   ON c.product_id=p.id
-        JOIN defect_types dt ON c.defect_type_id=dt.id
+        JOIN defect_types dt
+            ON c.defect_type_id=dt.id
         LEFT JOIN users u ON c.assigned_to_id=u.id
         WHERE 1=1
     """
     params = []
     if fp  != "All":
-        query+=" AND p.name=?";params.append(fp)
+        query+=" AND p.name=%s";params.append(fp)
     if fpr != "All":
-        query+=" AND c.priority=?";params.append(fpr)
+        query+=" AND c.priority=%s";params.append(fpr)
     if fs  != "All":
-        query+=" AND c.status=?";params.append(fs)
+        query+=" AND c.status=%s";params.append(fs)
     if search:
-        query += (" AND (c.ticket_number LIKE ? "
-                  "OR cu.customer_name LIKE ?)")
-        params.extend([f"%{search}%",f"%{search}%"])
+        query += (" AND (c.ticket_number ILIKE %s "
+                  "OR cu.customer_name ILIKE %s)")
+        params.extend(
+            [f"%{search}%",f"%{search}%"])
     query  += " ORDER BY c.created_at DESC"
-    claims  = conn.execute(query,params).fetchall()
-    execs   = conn.execute("""
+    claims  = db_fetch(query,params)
+    execs   = db_fetch("""
         SELECT u.id,u.full_name,u.email FROM users u
         JOIN roles r ON u.role_id=r.id
         WHERE r.name IN ('Quality Executive',
                          'Quality Manager','Admin')
-        AND u.is_active=1
-    """).fetchall()
-    conn.close()
+        AND u.is_active=TRUE
+    """)
 
     exec_opts   = {"Unassigned":None}
     exec_opts.update(
@@ -1180,7 +1181,8 @@ def show_helpdesk(user):
     for col,label,value,clr,bg in [
         (s1,"Total",len(claims),"#3b82f6","#eff6ff"),
         (s2,"New",
-         sum(1 for c in claims if c["status"]=="New"),
+         sum(1 for c in claims
+             if c["status"]=="New"),
          "#ef4444","#fef2f2"),
         (s3,"Open",
          sum(1 for c in claims
@@ -1189,7 +1191,8 @@ def show_helpdesk(user):
          "#f59e0b","#fffbeb"),
         (s4,"Closed",
          sum(1 for c in claims
-             if c["status"] in ("Resolved","Closed")),
+             if c["status"] in
+             ("Resolved","Closed")),
          "#10b981","#f0fdf4"),
     ]:
         with col:
@@ -1200,10 +1203,13 @@ def show_helpdesk(user):
                         border-radius:10px;padding:14px;
                         text-align:center;
                         margin-bottom:16px;'>
-                <div style='font-size:24px;font-weight:700;
+                <div style='font-size:24px;
+                            font-weight:700;
                             color:{clr};'>{value}</div>
-                <div style='font-size:11px;color:#64748b;
-                            margin-top:2px;'>{label}</div>
+                <div style='font-size:11px;
+                            color:#64748b;
+                            margin-top:2px;'>
+                    {label}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1211,12 +1217,14 @@ def show_helpdesk(user):
         st.info("No claims found.")
         return
 
-    view = st.radio("View",["📋 List","🗂️ Kanban"],
-                    horizontal=True,key="hd_view")
+    view = st.radio(
+        "View",["📋 List","🗂️ Kanban"],
+        horizontal=True,key="hd_view")
     if view == "🗂️ Kanban":
         show_kanban(claims)
     else:
-        show_list_view(claims,role,exec_opts,exec_emails)
+        show_list_view(claims,role,
+                       exec_opts,exec_emails)
 
 
 def show_kanban(claims):
@@ -1228,7 +1236,8 @@ def show_kanban(claims):
     ]
     cols = st.columns(len(statuses))
     for col,(status,color) in zip(cols,statuses):
-        sc = [c for c in claims if c["status"]==status]
+        sc = [c for c in claims
+              if c["status"]==status]
         with col:
             st.markdown(f"""
             <div style='background:#ffffff;
@@ -1236,11 +1245,12 @@ def show_kanban(claims):
                         border-top:3px solid {color};
                         border-radius:10px;padding:10px;
                         margin-bottom:8px;'>
-                <div style='color:{color};font-weight:700;
-                    font-size:11px;
+                <div style='color:{color};
+                    font-weight:700;font-size:11px;
                     text-transform:uppercase;'>
                     {status}</div>
-                <div style='color:#64748b;font-size:11px;'>
+                <div style='color:#64748b;
+                    font-size:11px;'>
                     {len(sc)} ticket(s)</div>
             </div>
             """, unsafe_allow_html=True)
@@ -1248,10 +1258,11 @@ def show_kanban(claims):
                 pc  = get_priority_color(c["priority"])
                 age = get_ageing(c["created_at"])
                 sla = get_sla_status(
-                    c["sla_resolution_due_at"] or "",
+                    c["sla_resolution_due_at"],
                     c["status"])
                 si  = ("🔴" if sla=="breached" else
-                       "🟡" if sla=="warning"  else "🟢")
+                       "🟡" if sla=="warning"
+                       else "🟢")
                 st.markdown(f"""
                 <div style='background:#ffffff;
                     border:1px solid #e2e8f0;
@@ -1282,8 +1293,8 @@ def show_kanban(claims):
                 """, unsafe_allow_html=True)
 
 
-def show_list_view(claims, role, exec_opts,
-                   exec_emails):
+def show_list_view(claims, role,
+                   exec_opts, exec_emails):
     status_opts = [
         "New","Assigned","Investigation",
         "Pending Approval","Resolved","Closed"
@@ -1293,13 +1304,13 @@ def show_list_view(claims, role, exec_opts,
         sc  = get_status_color(c["status"])
         age = get_ageing(c["created_at"])
         sla = get_sla_status(
-            c["sla_resolution_due_at"] or "",
+            c["sla_resolution_due_at"],
             c["status"])
         slac = ("#ef4444" if sla=="breached" else
                 "#f59e0b" if sla=="warning"
                 else "#10b981")
-        slal = ("⚠️ Breached" if sla=="breached" else
-                "⚡ Warning"  if sla=="warning"
+        slal = ("⚠️ Breached" if sla=="breached"
+                else "⚡ Warning" if sla=="warning"
                 else "✅ OK")
 
         with st.expander(
@@ -1353,7 +1364,8 @@ def show_list_view(claims, role, exec_opts,
                         padding:5px 0;'>Contact</td>
                         <td style='color:#1e293b;'>
                         {c["submitted_by_name"]} ·
-                        {c["submitted_by_email"]}</td></tr>
+                        {c["submitted_by_email"]}
+                        </td></tr>
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>Product</td>
                         <td style='color:#1e293b;'>
@@ -1417,8 +1429,8 @@ def show_list_view(claims, role, exec_opts,
                         if ns != c["status"]:
                             update_claim_status(
                                 c["id"],ns,
-                                st.session_state.user[
-                                    "id"])
+                                st.session_state
+                                  .user["id"])
                             st.success(
                                 f"✅ Updated to {ns}")
                             st.rerun()
@@ -1454,25 +1466,20 @@ def show_list_view(claims, role, exec_opts,
                     if st.button("🔬 Investigate",
                         key=f"inv_{c['id']}",
                         use_container_width=True):
-                        st.session_state.selected_claim\
-                            = c["id"]
-                        st.session_state.current_page \
-                            = "investigations"
+                        st.session_state\
+                            .selected_claim = c["id"]
+                        st.session_state\
+                            .current_page = "investigations"
                         st.rerun()
                 st.markdown("</div>",
                             unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════
-# DEPARTMENT COLLABORATION COMMENTS
+# COLLABORATION COMMENTS
 # ══════════════════════════════════════════════════════════
 
 def show_collaboration_comments(claim_id, user):
-    """
-    Department collaboration comments.
-    All internal team members can post and
-    see each other's comments on a claim.
-    """
     st.markdown("""
     <div style='background:#ffffff;
                 border:1px solid #e2e8f0;
@@ -1482,8 +1489,8 @@ def show_collaboration_comments(claim_id, user):
                     gap:8px;margin-bottom:16px;'>
             <span style='font-size:20px;'>💬</span>
             <div>
-                <div style='color:#1e293b;font-weight:700;
-                            font-size:15px;'>
+                <div style='color:#1e293b;
+                    font-weight:700;font-size:15px;'>
                     Department Collaboration</div>
                 <div style='color:#64748b;font-size:12px;'>
                     All team members can post and view
@@ -1493,21 +1500,16 @@ def show_collaboration_comments(claim_id, user):
     </div>
     """, unsafe_allow_html=True)
 
-    # Load existing collaboration comments
-    conn  = get_connection()
-    notes = conn.execute("""
-        SELECT n.note, n.created_at,
-               u.full_name, r.name as role_name
+    notes = db_fetch("""
+        SELECT n.note,n.created_at,
+               u.full_name,r.name as role_name
         FROM internal_notes n
         JOIN users u ON n.author_id=u.id
         JOIN roles r ON u.role_id=r.id
-        WHERE n.claim_id=?
-        AND n.is_internal=0
+        WHERE n.claim_id=%s AND n.is_internal=FALSE
         ORDER BY n.created_at ASC
-    """, (claim_id,)).fetchall()
-    conn.close()
+    """, (claim_id,))
 
-    # Role colors for avatars
     role_colors = {
         "Admin":             "#ef4444",
         "Quality Manager":   "#f59e0b",
@@ -1521,7 +1523,6 @@ def show_collaboration_comments(claim_id, user):
         "Customer":          "🏢",
     }
 
-    # Display comments
     if notes:
         for note in notes:
             rc    = role_colors.get(
@@ -1530,10 +1531,12 @@ def show_collaboration_comments(claim_id, user):
                 note["role_name"],"👤")
             is_me = (note["full_name"] ==
                      user["full_name"])
-            align = "flex-end" if is_me else "flex-start"
+            align = ("flex-end" if is_me
+                     else "flex-start")
             bg    = "#eff6ff" if is_me else "#ffffff"
-            border= "#3b82f6" if is_me else "#e2e8f0"
-
+            border= ("#3b82f6" if is_me
+                     else "#e2e8f0")
+            ts    = str(note["created_at"])[:16]
             st.markdown(f"""
             <div style='display:flex;
                         justify-content:{align};
@@ -1552,11 +1555,8 @@ def show_collaboration_comments(claim_id, user):
                             {note["full_name"]}</span>
                         <span style='color:#94a3b8;
                             font-size:11px;'>
-                            · {note["role_name"]}</span>
-                        <span style='color:#94a3b8;
-                            font-size:11px;'>
-                            · {note["created_at"][:16]}
-                        </span>
+                            · {note["role_name"]}
+                            · {ts}</span>
                     </div>
                     <div style='background:{bg};
                         border:1px solid {border};
@@ -1565,9 +1565,7 @@ def show_collaboration_comments(claim_id, user):
                         "12px 12px 12px 4px"};
                         padding:12px 16px;
                         color:#1e293b;font-size:13px;
-                        line-height:1.5;
-                        box-shadow:0 1px 2px
-                        rgba(0,0,0,0.05);'>
+                        line-height:1.5;'>
                         {note["note"]}
                     </div>
                 </div>
@@ -1577,11 +1575,10 @@ def show_collaboration_comments(claim_id, user):
         st.markdown("""
         <div style='text-align:center;padding:24px;
                     color:#94a3b8;font-size:13px;'>
-            💬 No comments yet. Be the first to comment!
+            💬 No comments yet. Be the first!
         </div>
         """, unsafe_allow_html=True)
 
-    # Add new comment
     with st.form(
         f"collab_form_{claim_id}",
         clear_on_submit=True
@@ -1589,55 +1586,49 @@ def show_collaboration_comments(claim_id, user):
         comment = st.text_area(
             "Add a comment",
             placeholder=(
-                "Share your findings, concerns or "
-                "updates with the team...\n"
-                "All departments can see this."
+                "Share findings with the team..."
             ),
             height=80,
             label_visibility="collapsed"
         )
         col1,col2 = st.columns([3,1])
         with col1:
+            rc = role_colors.get(
+                user["role_name"],"#64748b")
             st.markdown(f"""
             <div style='color:#64748b;font-size:12px;
                         padding-top:8px;'>
                 Posting as:
-                <span style='color:{role_colors.get(
-                    user["role_name"],"#64748b")};
+                <span style='color:{rc};
                     font-weight:600;'>
                     {user["full_name"]}
                 </span>
-                ({user["role_name"]})
             </div>
             """, unsafe_allow_html=True)
         with col2:
             post = st.form_submit_button(
                 "💬 Post",
                 use_container_width=True)
-
         if post:
             if not comment.strip():
                 st.error("❌ Comment cannot be empty.")
             else:
-                conn = get_connection()
-                conn.execute("""
+                db_execute("""
                     INSERT INTO internal_notes
                     (claim_id,author_id,note,is_internal)
-                    VALUES (?,?,?,0)
+                    VALUES (%s,%s,%s,FALSE)
                 """, (claim_id,user["id"],
                       comment.strip()))
-                conn.execute("""
+                db_execute("""
                     INSERT INTO audit_logs
                     (claim_id,user_id,action,
                      entity_type,entity_id,new_value)
-                    VALUES (?,?,'COMMENT_ADDED',
-                            'note',?,?)
+                    VALUES (%s,%s,'COMMENT_ADDED',
+                            'note',%s,%s)
                 """, (claim_id,user["id"],
                       claim_id,
                       f"{user['full_name']}: "
                       f"{comment.strip()[:50]}"))
-                conn.commit()
-                conn.close()
                 st.success("✅ Comment posted!")
                 st.rerun()
 
@@ -1653,36 +1644,38 @@ def show_investigations(user):
             🔬 Investigation Workspace</h2>
         <p style='color:#64748b;margin:6px 0 0;
                   font-size:14px;'>
-            Investigate claims, collaborate with
-            departments and record findings.</p>
+            Investigate claims and collaborate.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    conn   = get_connection()
-    claims = conn.execute("""
-        SELECT c.id,c.ticket_number,c.status,c.priority,
-               cu.customer_name,p.name as product_name,
+    claims = db_fetch("""
+        SELECT c.id,c.ticket_number,c.status,
+               c.priority,cu.customer_name,
+               p.name as product_name,
                dt.name as defect_name,
-               c.defect_description,c.quantity_claimed,
-               c.quantity_unit,c.submitted_by_name,
-               c.submitted_by_email,c.submitted_by_mobile,
+               c.defect_description,
+               c.quantity_claimed,c.quantity_unit,
+               c.submitted_by_name,
+               c.submitted_by_email,
+               c.submitted_by_mobile,
                c.invoice_number,c.invoice_date,
                c.created_at,c.sla_resolution_due_at
         FROM claims c
         JOIN customers cu ON c.customer_id=cu.id
         JOIN products p   ON c.product_id=p.id
-        JOIN defect_types dt ON c.defect_type_id=dt.id
+        JOIN defect_types dt
+            ON c.defect_type_id=dt.id
         WHERE c.status NOT IN ('Closed')
         ORDER BY c.created_at DESC
-    """).fetchall()
-    conn.close()
+    """)
 
     if not claims:
         st.info("No active claims to investigate.")
         return
 
     claim_opts = {
-        f"{c['ticket_number']} — {c['customer_name']} "
+        f"{c['ticket_number']} — "
+        f"{c['customer_name']} "
         f"({c['product_name']})": c["id"]
         for c in claims
     }
@@ -1704,7 +1697,7 @@ def show_investigations(user):
     sc  = get_status_color(claim["status"])
     age = get_ageing(claim["created_at"])
     sla = get_sla_status(
-        claim["sla_resolution_due_at"] or "",
+        claim["sla_resolution_due_at"],
         claim["status"])
     slac = ("#ef4444" if sla=="breached" else
             "#f59e0b" if sla=="warning"
@@ -1721,24 +1714,26 @@ def show_investigations(user):
                     align-items:center;flex-wrap:wrap;
                     gap:8px;'>
             <div>
-                <span style='color:#3b82f6;font-size:18px;
-                    font-weight:700;'>
+                <span style='color:#3b82f6;
+                    font-size:18px;font-weight:700;'>
                     {claim["ticket_number"]}</span>
-                <span style='color:#64748b;font-size:14px;
-                    margin-left:12px;'>
+                <span style='color:#64748b;
+                    font-size:14px;margin-left:12px;'>
                     {claim["customer_name"]} ·
                     {claim["product_name"]} ·
                     {claim["defect_name"]}</span>
             </div>
             <div style='display:flex;gap:6px;'>
-                <span style='background:{pc}15;color:{pc};
-                    padding:4px 12px;border-radius:20px;
-                    font-size:12px;font-weight:700;
+                <span style='background:{pc}15;
+                    color:{pc};padding:4px 12px;
+                    border-radius:20px;font-size:12px;
+                    font-weight:700;
                     border:1px solid {pc}30;'>
                     {claim["priority"]}</span>
-                <span style='background:{sc}15;color:{sc};
-                    padding:4px 12px;border-radius:20px;
-                    font-size:12px;font-weight:700;
+                <span style='background:{sc}15;
+                    color:{sc};padding:4px 12px;
+                    border-radius:20px;font-size:12px;
+                    font-weight:700;
                     border:1px solid {sc}30;'>
                     {claim["status"]}</span>
                 <span style='background:{slac}15;
@@ -1752,7 +1747,6 @@ def show_investigations(user):
     </div>
     """, unsafe_allow_html=True)
 
-    # ── 6 Tabs including Collaboration ───────────────────
     tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
         "👤 Customer Details",
         "📎 Attachments",
@@ -1762,7 +1756,6 @@ def show_investigations(user):
         "✅ Resolution"
     ])
 
-    # ── TAB 1: Customer Details ───────────────────────────
     with tab1:
         col1,col2 = st.columns(2)
         with col1:
@@ -1773,8 +1766,7 @@ def show_investigations(user):
                 <div style='color:#64748b;font-size:11px;
                     font-weight:600;
                     text-transform:uppercase;
-                    margin-bottom:12px;'>
-                    Contact Info</div>
+                    margin-bottom:12px;'>Contact</div>
                 <table style='width:100%;font-size:13px;'>
                 <tr><td style='color:#64748b;
                     padding:5px 0;width:40%;'>Name</td>
@@ -1789,11 +1781,6 @@ def show_investigations(user):
                     padding:5px 0;'>Mobile</td>
                     <td style='color:#1e293b;'>
                     {claim["submitted_by_mobile"]}</td></tr>
-                <tr><td style='color:#64748b;
-                    padding:5px 0;'>Customer</td>
-                    <td style='color:#1e293b;
-                        font-weight:600;'>
-                    {claim["customer_name"]}</td></tr>
                 </table>
             </div>
             """, unsafe_allow_html=True)
@@ -1815,10 +1802,6 @@ def show_investigations(user):
                         font-weight:600;'>
                     {claim["invoice_number"]}</td></tr>
                 <tr><td style='color:#64748b;
-                    padding:5px 0;'>Date</td>
-                    <td style='color:#1e293b;'>
-                    {claim["invoice_date"]}</td></tr>
-                <tr><td style='color:#64748b;
                     padding:5px 0;'>Product</td>
                     <td style='color:#1e293b;
                         font-weight:600;'>
@@ -1828,41 +1811,33 @@ def show_investigations(user):
                     <td style='color:#1e293b;'>
                     {claim["defect_name"]}</td></tr>
                 <tr><td style='color:#64748b;
-                    padding:5px 0;'>Qty Claimed</td>
+                    padding:5px 0;'>Qty</td>
                     <td style='color:#1e293b;'>
                     {claim["quantity_claimed"]}
                     {claim["quantity_unit"]}</td></tr>
                 </table>
             </div>
             """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class='section-header'>
-            📝 Defect Description</div>
-        """, unsafe_allow_html=True)
         st.markdown(f"""
         <div style='background:#fffbeb;
                     border:1px solid #fcd34d;
                     border-radius:10px;padding:16px;
                     color:#92400e;font-size:14px;
-                    line-height:1.6;'>
+                    margin-top:16px;line-height:1.6;'>
             {claim["defect_description"]}
         </div>
         """, unsafe_allow_html=True)
 
-    # ── TAB 2: Attachments ────────────────────────────────
     with tab2:
-        conn  = get_connection()
-        files = conn.execute("""
+        files = db_fetch("""
             SELECT original_filename,file_type,
                    file_size_bytes,gdrive_view_url,
                    uploaded_at
-            FROM attachments WHERE claim_id=?
+            FROM attachments WHERE claim_id=%s
             ORDER BY uploaded_at DESC
-        """, (claim_id,)).fetchall()
-        conn.close()
+        """, (claim_id,))
         if not files:
-            st.info("No files uploaded for this claim.")
+            st.info("No files uploaded.")
         else:
             for f in files:
                 size_kb = round(
@@ -1889,15 +1864,12 @@ def show_investigations(user):
                         <span style='color:#64748b;
                             font-size:12px;
                             margin-left:8px;'>
-                            {size_kb} KB ·
-                            {f["uploaded_at"][:16]}
-                        </span>
+                            {size_kb} KB</span>
                     </div>
                     <a href='{f["gdrive_view_url"]}'
                        target='_blank'
                        style='background:#eff6ff;
-                       color:#3b82f6;
-                       padding:6px 14px;
+                       color:#3b82f6;padding:6px 14px;
                        border-radius:6px;
                        text-decoration:none;
                        font-size:12px;font-weight:600;
@@ -1906,15 +1878,10 @@ def show_investigations(user):
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ── TAB 3: Investigation ──────────────────────────────
     with tab3:
-        conn = get_connection()
-        inv  = conn.execute(
+        inv = db_fetchone(
             "SELECT * FROM investigations "
-            "WHERE claim_id=?",
-            (claim_id,)).fetchone()
-        conn.close()
-
+            "WHERE claim_id=%s", (claim_id,))
         root_opts = [
             "Select Root Cause","Farm Issue",
             "Harvesting Issue","Packing Issue",
@@ -1935,27 +1902,24 @@ def show_investigations(user):
                 inspector = st.text_input(
                     "Inspector",
                     value=inv["inspector_name"]
-                    if inv else "",
-                    placeholder="Inspector name")
+                    if inv else "")
             with ic2:
                 from datetime import date as dt_date
                 insp_date = st.date_input(
                     "Inspection Date",
                     value=dt_date.today())
                 lab_ref = st.text_input(
-                    "Lab Report Ref",
+                    "Lab Ref",
                     value=inv["lab_report_ref"]
-                    if inv else "",
-                    placeholder="LAB-2024-001")
-
+                    if inv else "")
             root_details = st.text_area(
                 "Root Cause Details *",
                 value=inv["root_cause_details"]
                 if inv else "",height=90)
             findings = st.text_area(
-                "Investigation Findings *",
-                value=inv["findings"] if inv else "",
-                height=90)
+                "Findings *",
+                value=inv["findings"]
+                if inv else "",height=90)
             ic3,ic4 = st.columns(2)
             with ic3:
                 corrective = st.text_area(
@@ -1967,11 +1931,9 @@ def show_investigations(user):
                     "Preventive Action",
                     value=inv["preventive_action"]
                     if inv else "",height=80)
-
-            save_inv = st.form_submit_button(
+            if st.form_submit_button(
                 "💾 Save Investigation",
-                use_container_width=True)
-            if save_inv:
+                use_container_width=True):
                 if root_cause == "Select Root Cause":
                     st.error("❌ Select root cause.")
                 elif not root_details.strip():
@@ -1979,23 +1941,19 @@ def show_investigations(user):
                 elif not findings.strip():
                     st.error("❌ Findings required.")
                 else:
-                    from datetime import datetime
-                    conn = get_connection()
-                    now  = datetime.now().strftime(
-                        "%Y-%m-%d %H:%M:%S")
                     if inv:
-                        conn.execute("""
+                        db_execute("""
                             UPDATE investigations SET
-                                root_cause_category=?,
-                                root_cause_details=?,
-                                findings=?,
-                                corrective_action=?,
-                                preventive_action=?,
-                                inspection_date=?,
-                                inspector_name=?,
-                                lab_report_ref=?,
-                                updated_at=?
-                            WHERE claim_id=?
+                                root_cause_category=%s,
+                                root_cause_details=%s,
+                                findings=%s,
+                                corrective_action=%s,
+                                preventive_action=%s,
+                                inspection_date=%s,
+                                inspector_name=%s,
+                                lab_report_ref=%s,
+                                updated_at=NOW()
+                            WHERE claim_id=%s
                         """, (root_cause,
                               root_details.strip(),
                               findings.strip(),
@@ -2004,10 +1962,10 @@ def show_investigations(user):
                               str(insp_date),
                               inspector.strip(),
                               lab_ref.strip(),
-                              now,claim_id))
+                              claim_id))
                     else:
-                        conn.execute("""
-                            INSERT INTO investigations (
+                        db_execute("""
+                            INSERT INTO investigations(
                                 claim_id,
                                 root_cause_category,
                                 root_cause_details,
@@ -2018,10 +1976,9 @@ def show_investigations(user):
                                 inspector_name,
                                 lab_report_ref,
                                 investigator_id,
-                                started_at,
-                                created_at,updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?,
-                                      ?,?,?,?,?)
+                                started_at)
+                            VALUES(%s,%s,%s,%s,%s,%s,
+                                   %s,%s,%s,%s,NOW())
                         """, (claim_id,root_cause,
                               root_details.strip(),
                               findings.strip(),
@@ -2030,108 +1987,80 @@ def show_investigations(user):
                               str(insp_date),
                               inspector.strip(),
                               lab_ref.strip(),
-                              user["id"],now,now,now))
-                    conn.execute("""
+                              user["id"]))
+                    db_execute("""
                         UPDATE claims SET
                             status='Investigation',
-                            updated_at=?
-                        WHERE id=? AND status='Assigned'
-                    """, (now,claim_id))
-                    conn.execute("""
-                        INSERT INTO audit_logs
-                        (claim_id,user_id,action,
-                         entity_type,entity_id,new_value)
-                        VALUES (?,?,
-                            'INVESTIGATION_SAVED',
-                            'investigation',?,?)
-                    """, (claim_id,user["id"],
-                          claim_id,root_cause))
-                    conn.commit()
-                    conn.close()
-                    st.success("✅ Investigation saved!")
+                            updated_at=NOW()
+                        WHERE id=%s
+                        AND status='Assigned'
+                    """, (claim_id,))
+                    st.success("✅ Saved!")
                     st.rerun()
 
-    # ── TAB 4: TEAM DISCUSSION (NEW!) ────────────────────
     with tab4:
         st.markdown("""
         <div style='background:#f0fdf4;
                     border:1px solid #bbf7d0;
-                    border-radius:8px;padding:12px 16px;
+                    border-radius:8px;padding:12px;
                     margin-bottom:16px;'>
             <div style='color:#166534;font-size:13px;
                         font-weight:600;'>
                 💬 Team Discussion Board</div>
             <div style='color:#475569;font-size:12px;
                         margin-top:4px;'>
-                All departments can post and view
-                comments here. Use this to share
-                findings, ask questions and coordinate
-                across teams. All comments are visible
-                to everyone in the quality team.
+                Visible to all departments.
+                Use this to coordinate across teams.
             </div>
         </div>
         """, unsafe_allow_html=True)
-
         show_collaboration_comments(claim_id, user)
 
-    # ── TAB 5: Internal Notes ─────────────────────────────
     with tab5:
         st.markdown("""
         <div style='background:#fef2f2;
                     border:1px solid #fecaca;
-                    border-radius:8px;padding:12px 16px;
+                    border-radius:8px;padding:12px;
                     margin-bottom:16px;'>
             <div style='color:#dc2626;font-size:13px;
                         font-weight:600;'>
                 🔒 Private Internal Notes</div>
             <div style='color:#475569;font-size:12px;
                         margin-top:4px;'>
-                These notes are strictly private and
                 NOT visible to customers.
-                Use Team Discussion tab to collaborate
-                with other departments.
             </div>
         </div>
         """, unsafe_allow_html=True)
-
         with st.form(f"note_form_{claim_id}"):
             note_text = st.text_area(
                 "Add Private Note",
-                placeholder="Private note for your "
-                            "own reference...",
+                placeholder="Private note...",
                 height=100)
-            save_note = st.form_submit_button(
-                "📝 Add Private Note",
-                use_container_width=True)
-            if save_note:
+            if st.form_submit_button(
+                "📝 Add Note",
+                use_container_width=True):
                 if not note_text.strip():
                     st.error("❌ Note cannot be empty.")
                 else:
-                    conn = get_connection()
-                    conn.execute("""
+                    db_execute("""
                         INSERT INTO internal_notes
                         (claim_id,author_id,note,
                          is_internal)
-                        VALUES (?,?,?,1)
+                        VALUES (%s,%s,%s,TRUE)
                     """, (claim_id,user["id"],
                           note_text.strip()))
-                    conn.commit()
-                    conn.close()
                     st.success("✅ Note added!")
                     st.rerun()
 
-        conn  = get_connection()
-        notes = conn.execute("""
+        notes = db_fetch("""
             SELECT n.note,n.created_at,u.full_name,
                    r.name as role_name
             FROM internal_notes n
             JOIN users u ON n.author_id=u.id
             JOIN roles r ON u.role_id=r.id
-            WHERE n.claim_id=? AND n.is_internal=1
+            WHERE n.claim_id=%s AND n.is_internal=TRUE
             ORDER BY n.created_at DESC
-        """, (claim_id,)).fetchall()
-        conn.close()
-
+        """, (claim_id,))
         if notes:
             for note in notes:
                 st.markdown(f"""
@@ -2147,15 +2076,10 @@ def show_investigations(user):
                             font-weight:600;
                             font-size:13px;'>
                             🔒 {note["full_name"]}
-                            <span style='color:#64748b;
-                                font-weight:400;
-                                font-size:11px;'>
-                                ({note["role_name"]})
-                            </span>
                         </span>
                         <span style='color:#94a3b8;
                             font-size:12px;'>
-                            {note["created_at"][:16]}
+                            {str(note["created_at"])[:16]}
                         </span>
                     </div>
                     <div style='color:#475569;
@@ -2166,7 +2090,6 @@ def show_investigations(user):
         else:
             st.info("No private notes yet.")
 
-    # ── TAB 6: Resolution ─────────────────────────────────
     with tab6:
         status_opts = [
             "New","Assigned","Investigation",
@@ -2174,49 +2097,43 @@ def show_investigations(user):
         ]
         with st.form(f"res_form_{claim_id}"):
             new_status = st.selectbox(
-                "Update Claim Status",status_opts,
-                index=status_opts.index(claim["status"]))
+                "Update Status",status_opts,
+                index=status_opts.index(
+                    claim["status"]))
             resolution_note = st.text_area(
                 "Resolution Note",
                 placeholder="How was this resolved?",
                 height=100)
-            save_res = st.form_submit_button(
+            if st.form_submit_button(
                 "✅ Save Resolution",
-                use_container_width=True)
-            if save_res:
+                use_container_width=True):
                 update_claim_status(
                     claim_id,new_status,user["id"])
                 if resolution_note.strip():
-                    conn = get_connection()
-                    conn.execute("""
+                    db_execute("""
                         INSERT INTO internal_notes
                         (claim_id,author_id,note,
                          is_internal)
-                        VALUES (?,?,?,1)
+                        VALUES (%s,%s,%s,TRUE)
                     """, (claim_id,user["id"],
                           f"[RESOLUTION] "
                           f"{resolution_note.strip()}"))
-                    conn.commit()
-                    conn.close()
                 st.success(
-                    f"✅ Status updated to {new_status}")
+                    f"✅ Updated to {new_status}")
                 st.rerun()
 
         st.markdown("""
         <div class='section-header'>
             📋 Audit Trail</div>
         """, unsafe_allow_html=True)
-        conn = get_connection()
-        logs = conn.execute("""
+        logs = db_fetch("""
             SELECT a.action,a.old_value,a.new_value,
                    a.created_at,u.full_name
             FROM audit_logs a
             LEFT JOIN users u ON a.user_id=u.id
-            WHERE a.claim_id=?
+            WHERE a.claim_id=%s
             ORDER BY a.created_at DESC
-        """, (claim_id,)).fetchall()
-        conn.close()
-
+        """, (claim_id,))
         if logs:
             for log in logs:
                 icons = {
@@ -2257,7 +2174,8 @@ def show_investigations(user):
                     <div style='text-align:right;'>
                         <div style='color:#94a3b8;
                             font-size:11px;'>
-                            {log["created_at"][:16]}</div>
+                            {str(log["created_at"])[:16]}
+                        </div>
                         <div style='color:#64748b;
                             font-size:11px;'>
                             {log["full_name"] or "System"}
@@ -2308,32 +2226,10 @@ def show_settlements(user):
 def show_submit_settlement(user):
     st.markdown("""
     <div class='section-header'>
-        📋 Submit Settlement Proposal</div>
+        📋 Submit Settlement</div>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style='background:#eff6ff;
-                border:1px solid #bfdbfe;
-                border-radius:8px;padding:12px 16px;
-                margin-bottom:16px;'>
-        <div style='color:#1d4ed8;font-size:13px;
-                    font-weight:600;'>
-            💡 Settlement Options</div>
-        <div style='color:#475569;font-size:12px;
-                    margin-top:4px;'>
-            <strong>Approved</strong> — Full claim
-            amount approved<br>
-            <strong>Partial Approval</strong> — Only
-            part of the claim approved. Set approved
-            quantity and credit amount accordingly.<br>
-            <strong>Rejected</strong> — Claim not
-            approved. Explain reason in remarks.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    conn   = get_connection()
-    claims = conn.execute("""
+    claims = db_fetch("""
         SELECT c.id,c.ticket_number,c.status,
                c.priority,c.quantity_claimed,
                c.quantity_unit,cu.customer_name,
@@ -2342,21 +2238,22 @@ def show_submit_settlement(user):
         FROM claims c
         JOIN customers cu ON c.customer_id=cu.id
         JOIN products  p  ON c.product_id=p.id
-        JOIN defect_types dt ON c.defect_type_id=dt.id
+        JOIN defect_types dt
+            ON c.defect_type_id=dt.id
         LEFT JOIN settlements s ON c.id=s.claim_id
         WHERE c.status IN ('Investigation',
                            'Assigned','New')
         AND s.id IS NULL
         ORDER BY c.created_at DESC
-    """).fetchall()
-    conn.close()
+    """)
 
     if not claims:
         st.success("✅ No claims pending settlement.")
         return
 
     claim_opts = {
-        f"{c['ticket_number']} — {c['customer_name']} "
+        f"{c['ticket_number']} — "
+        f"{c['customer_name']} "
         f"({c['product_name']})": c["id"]
         for c in claims
     }
@@ -2379,11 +2276,9 @@ def show_submit_settlement(user):
         <span style='color:#64748b;font-size:13px;
                      margin-left:12px;'>
             {claim["customer_name"]} ·
-            {claim["product_name"]} ·
-            {claim["defect_name"]}</span>
+            {claim["product_name"]}</span>
         <div style='color:#64748b;font-size:13px;
-                    margin-top:4px;'>
-            Qty Claimed:
+                    margin-top:4px;'>Qty Claimed:
             <strong style='color:#1e293b;'>
                 {claim["quantity_claimed"]}
                 {claim["quantity_unit"]}</strong>
@@ -2395,19 +2290,13 @@ def show_submit_settlement(user):
         sc1,sc2 = st.columns(2)
         with sc1:
             decision = st.selectbox(
-                "Settlement Decision *",
+                "Decision *",
                 ["Approved",
                  "Partial Approval",
-                 "Rejected"],
-                help=(
-                    "Partial Approval = approve only "
-                    "part of the claimed quantity/amount"
-                )
-            )
+                 "Rejected"])
         with sc2:
             currency = st.selectbox(
                 "Currency",["INR","USD","EUR"])
-
         sc3,sc4 = st.columns(2)
         with sc3:
             approved_qty = st.number_input(
@@ -2416,106 +2305,55 @@ def show_submit_settlement(user):
                 max_value=float(
                     claim["quantity_claimed"]),
                 value=float(claim["quantity_claimed"]),
-                step=0.5,format="%.1f",
-                help=(
-                    "For Partial Approval: enter the "
-                    "quantity you are approving. "
-                    "Can be less than claimed."
-                )
-            )
+                step=0.5,format="%.1f")
         with sc4:
             credit_amount = st.number_input(
                 "Credit Amount (₹)",
-                min_value=0.0,
-                step=100.0,format="%.2f",
-                help=(
-                    "For Partial Approval: enter "
-                    "partial credit amount. "
-                    "For Rejected: leave as 0."
-                )
-            )
-
+                min_value=0.0,step=100.0,
+                format="%.2f")
         remarks = st.text_area(
-            "Remarks / Justification *",
-            placeholder=(
-                "Explain your settlement decision...\n\n"
-                "For Partial Approval: explain why "
-                "only partial amount is approved.\n"
-                "For Rejection: explain the reason."
-            ),
-            height=130)
-
-        st.markdown("""
-        <div style='background:#fffbeb;
-                    border:1px solid #fcd34d;
-                    border-radius:8px;padding:12px;
-                    margin:8px 0;color:#92400e;
-                    font-size:13px;'>
-            ⚠️ This will be sent to Quality Manager
-            for final approval.
-        </div>
-        """, unsafe_allow_html=True)
-
-        sub = st.form_submit_button(
-            "📤 Submit for Manager Approval",
-            use_container_width=True)
-
-        if sub:
+            "Remarks *",
+            placeholder="Justify the decision...",
+            height=120)
+        if st.form_submit_button(
+            "📤 Submit for Approval",
+            use_container_width=True):
             if not remarks.strip():
-                st.error("❌ Remarks/Justification "
-                         "required.")
-            elif (decision in ["Approved",
-                               "Partial Approval"]
-                  and approved_qty <= 0):
-                st.error("❌ Approved Quantity must "
-                         "be greater than 0 for "
-                         "Approved/Partial decisions.")
+                st.error("❌ Remarks required.")
             else:
-                from datetime import datetime
-                conn = get_connection()
-                now  = datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S")
                 try:
-                    conn.execute("""
+                    db_execute("""
                         INSERT INTO settlements (
                             claim_id,decision,
                             approved_quantity,
                             credit_amount,currency,
                             remarks,submitted_by_id,
-                            submitted_at,
-                            settlement_status,
-                            created_at,updated_at
-                        ) VALUES (?,?,?,?,?,?,?,?,
-                                  'Pending',?,?)
+                            settlement_status)
+                        VALUES (%s,%s,%s,%s,%s,%s,
+                                %s,'Pending')
                     """, (claim_id,decision,
                           approved_qty,credit_amount,
                           currency,remarks.strip(),
-                          user["id"],now,now,now))
-                    conn.execute("""
+                          user["id"]))
+                    db_execute("""
                         UPDATE claims SET
                             status='Pending Approval',
-                            updated_at=?
-                        WHERE id=?
-                    """, (now,claim_id))
-                    conn.execute("""
+                            updated_at=NOW()
+                        WHERE id=%s
+                    """, (claim_id,))
+                    db_execute("""
                         INSERT INTO audit_logs
                         (claim_id,user_id,action,
                          entity_type,entity_id,
                          new_value)
-                        VALUES (?,?,
+                        VALUES (%s,%s,
                             'SETTLEMENT_SUBMITTED',
-                            'settlement',?,?)
+                            'settlement',%s,%s)
                     """, (claim_id,user["id"],
                           claim_id,decision))
-                    conn.commit()
-                    conn.close()
-                    st.success(
-                        f"✅ {decision} settlement "
-                        f"submitted for approval!")
+                    st.success("✅ Submitted!")
                     st.rerun()
                 except Exception as e:
-                    conn.rollback()
-                    conn.close()
                     st.error(f"❌ {str(e)}")
 
 
@@ -2525,15 +2363,15 @@ def show_pending_approvals(user):
         ⏳ Pending Approvals</div>
     """, unsafe_allow_html=True)
 
-    conn     = get_connection()
-    pendings = conn.execute("""
+    pendings = db_fetch("""
         SELECT s.id,s.decision,s.approved_quantity,
                s.credit_amount,s.currency,s.remarks,
                s.submitted_at,s.settlement_status,
                c.id as claim_id,c.ticket_number,
                c.priority,c.quantity_claimed,
                c.quantity_unit,
-               cu.customer_name,cu.email as cust_email,
+               cu.customer_name,
+               cu.email as cust_email,
                p.name as product_name,
                dt.name as defect_name,
                u.full_name as submitted_by
@@ -2541,27 +2379,16 @@ def show_pending_approvals(user):
         JOIN claims c     ON s.claim_id=c.id
         JOIN customers cu ON c.customer_id=cu.id
         JOIN products p   ON c.product_id=p.id
-        JOIN defect_types dt ON c.defect_type_id=dt.id
-        JOIN users u      ON s.submitted_by_id=u.id
+        JOIN defect_types dt
+            ON c.defect_type_id=dt.id
+        JOIN users u ON s.submitted_by_id=u.id
         WHERE s.settlement_status='Pending'
         ORDER BY s.submitted_at DESC
-    """).fetchall()
-    conn.close()
+    """)
 
     if not pendings:
         st.success("✅ No pending approvals!")
         return
-
-    st.markdown(f"""
-    <div style='background:#fffbeb;
-                border:1px solid #fcd34d;
-                border-radius:8px;padding:12px;
-                margin-bottom:16px;'>
-        <span style='color:#92400e;font-weight:600;'>
-            ⏳ {len(pendings)} pending approval(s)
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
 
     for s in pendings:
         dc = ("#10b981" if s["decision"]=="Approved"
@@ -2596,30 +2423,18 @@ def show_pending_approvals(user):
                             font-weight:600;'>
                         {s["customer_name"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:6px 0;'>Product</td>
-                        <td style='color:#1e293b;'>
-                        {s["product_name"]}</td></tr>
-                    <tr><td style='color:#64748b;
                         padding:6px 0;'>Decision</td>
                         <td style='color:{dc};
                             font-weight:700;'>
                         {s["decision"]}</td></tr>
                     <tr><td style='color:#64748b;
                         padding:6px 0;'>
-                        Qty Claimed</td>
-                        <td style='color:#1e293b;'>
-                        {s["quantity_claimed"]}
-                        {s["quantity_unit"]}</td></tr>
-                    <tr><td style='color:#64748b;
-                        padding:6px 0;'>
                         Approved Qty</td>
-                        <td style='color:#1e293b;
-                            font-weight:600;'>
+                        <td style='color:#1e293b;'>
                         {s["approved_quantity"]}
                         {s["quantity_unit"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:6px 0;'>
-                        Credit Amount</td>
+                        padding:6px 0;'>Credit</td>
                         <td style='color:#10b981;
                             font-weight:700;
                             font-size:15px;'>
@@ -2629,43 +2444,26 @@ def show_pending_approvals(user):
                         padding:6px 0;'>By</td>
                         <td style='color:#1e293b;'>
                         {s["submitted_by"]}</td></tr>
-                    <tr><td style='color:#64748b;
-                        padding:6px 0;'>At</td>
-                        <td style='color:#1e293b;'>
-                        {s["submitted_at"][:16]}</td>
-                    </tr>
                     </table>
                     <div style='margin-top:10px;
-                        padding:10px;
-                        background:#f8fafc;
+                        padding:10px;background:#f8fafc;
                         border-radius:8px;'>
                         <div style='color:#64748b;
                             font-size:11px;
                             font-weight:600;
                             margin-bottom:4px;'>
-                            REMARKS FROM QE</div>
+                            REMARKS</div>
                         <div style='color:#1e293b;
                             font-size:13px;'>
                             {s["remarks"]}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-
             with col2:
-                st.markdown("""
-                <div style='background:#ffffff;
-                    border:1px solid #e2e8f0;
-                    border-radius:10px;padding:16px;'>
-                    <div style='color:#3b82f6;
-                        font-weight:600;font-size:13px;
-                        margin-bottom:12px;'>
-                        👔 Manager Decision</div>
-                """, unsafe_allow_html=True)
-
                 with st.form(f"appr_{s['id']}"):
                     mgr_rem = st.text_area(
-                        "Manager Remarks",
-                        placeholder="Add note...",
+                        "Manager Note",
+                        placeholder="Optional...",
                         height=80,
                         key=f"mgr_{s['id']}")
                     a1,a2 = st.columns(2)
@@ -2678,55 +2476,49 @@ def show_pending_approvals(user):
                             "❌ Reject",
                             use_container_width=True)
                     if approve or reject:
-                        from datetime import datetime
-                        conn   = get_connection()
-                        now    = datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S")
-                        status = ("Approved" if approve
+                        status = ("Approved"
+                                  if approve
                                   else "Rejected")
-                        new_cs = ("Resolved" if approve
+                        new_cs = ("Resolved"
+                                  if approve
                                   else "Investigation")
                         final_remarks = (
                             s["remarks"] +
                             (f"\n[Manager] {mgr_rem}"
                              if mgr_rem else ""))
-                        conn.execute("""
+                        db_execute("""
                             UPDATE settlements SET
-                                settlement_status=?,
-                                approved_by_id=?,
-                                approved_at=?,
-                                remarks=?,
-                                updated_at=?
-                            WHERE id=?
-                        """, (status,user["id"],now,
-                              final_remarks,now,
-                              s["id"]))
-                        conn.execute("""
+                                settlement_status=%s,
+                                approved_by_id=%s,
+                                approved_at=NOW(),
+                                remarks=%s,
+                                updated_at=NOW()
+                            WHERE id=%s
+                        """, (status,user["id"],
+                              final_remarks,s["id"]))
+                        db_execute("""
                             UPDATE claims SET
-                                status=?,updated_at=?
-                            WHERE id=?
-                        """, (new_cs,now,s["claim_id"]))
-                        conn.execute("""
+                                status=%s,
+                                updated_at=NOW()
+                            WHERE id=%s
+                        """, (new_cs,s["claim_id"]))
+                        db_execute("""
                             INSERT INTO audit_logs
                             (claim_id,user_id,action,
                              entity_type,entity_id,
                              new_value)
-                            VALUES (?,?,?,
-                                    'settlement',?,?)
+                            VALUES (%s,%s,%s,
+                                    'settlement',%s,%s)
                         """, (s["claim_id"],user["id"],
                               f"SETTLEMENT_"
                               f"{status.upper()}",
                               s["id"],status))
-                        conn.commit()
-
-                        # Send email to customer
-                        claim_info = conn.execute("""
-                            SELECT c.submitted_by_email,
-                                   c.submitted_by_name
-                            FROM claims c WHERE c.id=?
-                        """, (s["claim_id"],)).fetchone()
-                        conn.close()
-
+                        # Email customer
+                        claim_info = db_fetchone("""
+                            SELECT submitted_by_email,
+                                   submitted_by_name
+                            FROM claims WHERE id=%s
+                        """, (s["claim_id"],))
                         if claim_info:
                             send_settlement_email(
                                 claim_info[
@@ -2738,13 +2530,9 @@ def show_pending_approvals(user):
                                 s["approved_quantity"],
                                 s["credit_amount"],
                                 s["currency"],
-                                final_remarks
-                            )
+                                final_remarks)
                         st.success(f"✅ {status}!")
                         st.rerun()
-
-                st.markdown("</div>",
-                            unsafe_allow_html=True)
 
 
 def show_settlement_history(user):
@@ -2753,14 +2541,14 @@ def show_settlement_history(user):
         📊 Settlement History</div>
     """, unsafe_allow_html=True)
 
-    conn = get_connection()
-    settlements = conn.execute("""
+    settlements = db_fetch("""
         SELECT s.id,s.decision,s.approved_quantity,
                s.credit_amount,s.currency,s.remarks,
                s.submitted_at,s.approved_at,
                s.settlement_status,
                c.ticket_number,c.quantity_unit,
-               cu.customer_name,p.name as product_name,
+               cu.customer_name,
+               p.name as product_name,
                u1.full_name as submitted_by,
                u2.full_name as approved_by
         FROM settlements s
@@ -2768,10 +2556,10 @@ def show_settlement_history(user):
         JOIN customers cu ON c.customer_id=cu.id
         JOIN products p   ON c.product_id=p.id
         JOIN users u1     ON s.submitted_by_id=u1.id
-        LEFT JOIN users u2 ON s.approved_by_id=u2.id
+        LEFT JOIN users u2
+            ON s.approved_by_id=u2.id
         ORDER BY s.submitted_at DESC
-    """).fetchall()
-    conn.close()
+    """)
 
     if not settlements:
         st.info("No settlements yet.")
@@ -2779,14 +2567,18 @@ def show_settlement_history(user):
 
     total     = len(settlements)
     pending   = sum(1 for s in settlements
-                    if s["settlement_status"]=="Pending")
+                    if s["settlement_status"]==
+                    "Pending")
     approved  = sum(1 for s in settlements
-                    if s["settlement_status"]=="Approved")
+                    if s["settlement_status"]==
+                    "Approved")
     rejected  = sum(1 for s in settlements
-                    if s["settlement_status"]=="Rejected")
+                    if s["settlement_status"]==
+                    "Rejected")
     total_val = sum(s["credit_amount"]
                     for s in settlements
-                    if s["settlement_status"]=="Approved")
+                    if s["settlement_status"]==
+                    "Approved")
 
     sc1,sc2,sc3,sc4 = st.columns(4)
     for col,label,value,clr,bg in [
@@ -2803,10 +2595,13 @@ def show_settlement_history(user):
                         border-radius:10px;padding:14px;
                         text-align:center;
                         margin-bottom:16px;'>
-                <div style='font-size:22px;font-weight:700;
+                <div style='font-size:22px;
+                            font-weight:700;
                             color:{clr};'>{value}</div>
-                <div style='font-size:11px;color:#64748b;
-                            margin-top:2px;'>{label}</div>
+                <div style='font-size:11px;
+                            color:#64748b;
+                            margin-top:2px;'>
+                    {label}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -2857,29 +2652,23 @@ def show_settlement_history(user):
                             font-weight:600;'>
                         {s["customer_name"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:5px 0;'>Product</td>
-                        <td style='color:#1e293b;'>
-                        {s["product_name"]}</td></tr>
-                    <tr><td style='color:#64748b;
                         padding:5px 0;'>Decision</td>
                         <td style='color:#3b82f6;
                             font-weight:700;'>
                         {s["decision"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:5px 0;'>Approved Qty</td>
-                        <td style='color:#1e293b;'>
-                        {s["approved_quantity"]}
-                        {s["quantity_unit"]}</td></tr>
-                    <tr><td style='color:#64748b;
                         padding:5px 0;'>Credit</td>
                         <td style='color:#10b981;
                             font-weight:700;'>
-                        ₹{s["credit_amount"]:,.2f}</td>
-                    </tr>
+                        ₹{s["credit_amount"]:,.2f}
+                        </td></tr>
                     </table>
                 </div>
                 """, unsafe_allow_html=True)
             with c2:
+                approved_at = (
+                    str(s["approved_at"])[:16]
+                    if s["approved_at"] else "—")
                 st.markdown(f"""
                 <div style='background:#ffffff;
                     border:1px solid #e2e8f0;
@@ -2893,33 +2682,20 @@ def show_settlement_history(user):
                             font-weight:700;'>
                         {s["settlement_status"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:5px 0;'>Submitted By</td>
+                        padding:5px 0;'>By</td>
                         <td style='color:#1e293b;'>
                         {s["submitted_by"]}</td></tr>
                     <tr><td style='color:#64748b;
-                        padding:5px 0;'>Approved By</td>
+                        padding:5px 0;'>
+                        Approved By</td>
                         <td style='color:#1e293b;'>
                         {s["approved_by"] or "—"}</td>
                     </tr>
                     <tr><td style='color:#64748b;
                         padding:5px 0;'>At</td>
                         <td style='color:#1e293b;'>
-                        {s["approved_at"][:16]
-                         if s["approved_at"]
-                         else "—"}</td></tr>
+                        {approved_at}</td></tr>
                     </table>
-                    <div style='margin-top:10px;
-                        padding:10px;background:#f8fafc;
-                        border-radius:8px;'>
-                        <div style='color:#64748b;
-                            font-size:11px;
-                            font-weight:600;
-                            margin-bottom:4px;'>
-                            REMARKS</div>
-                        <div style='color:#1e293b;
-                            font-size:12px;'>
-                            {s["remarks"]}</div>
-                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -2937,45 +2713,43 @@ def show_mgmt_dashboard(user):
             📊 Management Dashboard</h2>
         <p style='color:#64748b;margin:6px 0 0;
                   font-size:14px;'>
-            Executive KPI overview and analytics.</p>
+            Executive KPI overview.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    conn = get_connection()
-    total    = conn.execute(
-        "SELECT COUNT(*) FROM claims").fetchone()[0]
-    open_c   = conn.execute(
-        "SELECT COUNT(*) FROM claims "
-        "WHERE status NOT IN ('Resolved','Closed')"
-    ).fetchone()[0]
-    closed   = conn.execute(
-        "SELECT COUNT(*) FROM claims "
-        "WHERE status IN ('Resolved','Closed')"
-    ).fetchone()[0]
-    critical = conn.execute(
-        "SELECT COUNT(*) FROM claims "
-        "WHERE priority='Critical'"
-    ).fetchone()[0]
-    breached = conn.execute("""
-        SELECT COUNT(*) FROM sla_tracking
-        WHERE resolution_breached=1
-        OR (resolution_due_at < datetime('now')
+    total    = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims")["n"]
+    open_c   = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
+        "WHERE status NOT IN "
+        "('Resolved','Closed')")["n"]
+    closed   = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
+        "WHERE status IN "
+        "('Resolved','Closed')")["n"]
+    critical = db_fetchone(
+        "SELECT COUNT(*) as n FROM claims "
+        "WHERE priority='Critical'")["n"]
+    breached = db_fetchone("""
+        SELECT COUNT(*) as n FROM sla_tracking
+        WHERE resolution_breached=TRUE
+        OR (resolution_due_at < NOW()
             AND resolved_at IS NULL)
-    """).fetchone()[0]
-    total_credit = conn.execute("""
-        SELECT COALESCE(SUM(credit_amount),0)
+    """)["n"]
+    total_credit = db_fetchone("""
+        SELECT COALESCE(SUM(credit_amount),0) as n
         FROM settlements
         WHERE settlement_status='Approved'
-    """).fetchone()[0]
-    avg_closure = conn.execute("""
+    """)["n"]
+    avg_row = db_fetchone("""
         SELECT AVG(
-            CAST(
-                (JULIANDAY(resolved_at) -
-                 JULIANDAY(created_at)) * 24
-            AS REAL)
-        ) FROM claims
+            EXTRACT(EPOCH FROM
+                (resolved_at - created_at))/3600
+        ) as n
+        FROM claims
         WHERE resolved_at IS NOT NULL
-    """).fetchone()[0]
+    """)
+    avg_closure = avg_row["n"] if avg_row else None
     sla_comp = round(
         ((total-breached)/total*100)
         if total > 0 else 100, 1)
@@ -2999,13 +2773,18 @@ def show_mgmt_dashboard(user):
                         border-radius:10px;padding:20px;
                         text-align:center;
                         margin-bottom:8px;'>
-                <div style='font-size:32px;font-weight:700;
+                <div style='font-size:32px;
+                            font-weight:700;
                             color:{clr};'>{value}</div>
-                <div style='font-size:13px;color:#1e293b;
+                <div style='font-size:13px;
+                            color:#1e293b;
                             font-weight:600;
-                            margin-top:4px;'>{label}</div>
-                <div style='font-size:11px;color:#64748b;
-                            margin-top:2px;'>{sub}</div>
+                            margin-top:4px;'>
+                    {label}</div>
+                <div style='font-size:11px;
+                            color:#64748b;
+                            margin-top:2px;'>
+                    {sub}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -3031,33 +2810,39 @@ def show_mgmt_dashboard(user):
                         border-radius:10px;padding:20px;
                         text-align:center;
                         margin-bottom:16px;'>
-                <div style='font-size:26px;font-weight:700;
+                <div style='font-size:26px;
+                            font-weight:700;
                             color:{clr};'>{value}</div>
-                <div style='font-size:13px;color:#1e293b;
+                <div style='font-size:13px;
+                            color:#1e293b;
                             font-weight:600;
-                            margin-top:4px;'>{label}</div>
-                <div style='font-size:11px;color:#64748b;
-                            margin-top:2px;'>{sub}</div>
+                            margin-top:4px;'>
+                    {label}</div>
+                <div style='font-size:11px;
+                            color:#64748b;
+                            margin-top:2px;'>
+                    {sub}</div>
             </div>
             """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class='section-header'>
-        📈 Analytics Charts</div>
+        📈 Analytics</div>
     """, unsafe_allow_html=True)
 
     ch1,ch2 = st.columns(2)
     with ch1:
-        data = conn.execute("""
-            SELECT p.name as Product,COUNT(*) as Claims
+        data = db_fetch("""
+            SELECT p.name as "Product",
+                   COUNT(*) as "Claims"
             FROM claims c
             JOIN products p ON c.product_id=p.id
             GROUP BY p.name
-        """).fetchall()
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             fig = px.pie(
-                df,names="Product",values="Claims",
+                pd.DataFrame(data),
+                names="Product",values="Claims",
                 title="Claims by Product",
                 color_discrete_sequence=[
                     "#3b82f6","#10b981","#f59e0b"])
@@ -3070,18 +2855,18 @@ def show_mgmt_dashboard(user):
                             use_container_width=True)
 
     with ch2:
-        data = conn.execute("""
-            SELECT priority as Priority,
-                   COUNT(*) as Claims
+        data = db_fetch("""
+            SELECT priority as "Priority",
+                   COUNT(*) as "Claims"
             FROM claims GROUP BY priority
-        """).fetchall()
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             colors = {"Critical":"#ef4444",
                       "Major":"#f59e0b",
                       "Minor":"#10b981"}
             fig = px.bar(
-                df,x="Priority",y="Claims",
+                pd.DataFrame(data),
+                x="Priority",y="Claims",
                 title="Claims by Priority",
                 color="Priority",
                 color_discrete_map=colors)
@@ -3096,20 +2881,22 @@ def show_mgmt_dashboard(user):
 
     ch3,ch4 = st.columns(2)
     with ch3:
-        data = conn.execute("""
-            SELECT status as Status,COUNT(*) as Claims
+        data = db_fetch("""
+            SELECT status as "Status",
+                   COUNT(*) as "Claims"
             FROM claims GROUP BY status
-        """).fetchall()
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             sc = {
                 "New":"#3b82f6","Assigned":"#8b5cf6",
                 "Investigation":"#f59e0b",
                 "Pending Approval":"#f97316",
-                "Resolved":"#10b981","Closed":"#64748b"
+                "Resolved":"#10b981",
+                "Closed":"#64748b"
             }
             fig = px.bar(
-                df,x="Status",y="Claims",
+                pd.DataFrame(data),
+                x="Status",y="Claims",
                 title="Claims by Status",
                 color="Status",
                 color_discrete_map=sc)
@@ -3123,18 +2910,19 @@ def show_mgmt_dashboard(user):
                             use_container_width=True)
 
     with ch4:
-        data = conn.execute("""
-            SELECT dt.name as Defect,COUNT(*) as Claims
+        data = db_fetch("""
+            SELECT dt.name as "Defect",
+                   COUNT(*) as "Claims"
             FROM claims c
             JOIN defect_types dt
                 ON c.defect_type_id=dt.id
             GROUP BY dt.name
-            ORDER BY Claims DESC LIMIT 8
-        """).fetchall()
+            ORDER BY "Claims" DESC LIMIT 8
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             fig = px.bar(
-                df,x="Claims",y="Defect",
+                pd.DataFrame(data),
+                x="Claims",y="Defect",
                 orientation="h",
                 title="Top Defect Types",
                 color="Claims",
@@ -3149,18 +2937,19 @@ def show_mgmt_dashboard(user):
 
     ch5,ch6 = st.columns(2)
     with ch5:
-        data = conn.execute("""
-            SELECT cu.customer_name as Customer,
-                   COUNT(*) as Claims
+        data = db_fetch("""
+            SELECT cu.customer_name as "Customer",
+                   COUNT(*) as "Claims"
             FROM claims c
-            JOIN customers cu ON c.customer_id=cu.id
+            JOIN customers cu
+                ON c.customer_id=cu.id
             GROUP BY cu.customer_name
-            ORDER BY Claims DESC LIMIT 8
-        """).fetchall()
+            ORDER BY "Claims" DESC LIMIT 8
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             fig = px.bar(
-                df,x="Claims",y="Customer",
+                pd.DataFrame(data),
+                x="Claims",y="Customer",
                 orientation="h",
                 title="Claims by Customer",
                 color="Claims",
@@ -3174,18 +2963,18 @@ def show_mgmt_dashboard(user):
                             use_container_width=True)
 
     with ch6:
-        data = conn.execute("""
-            SELECT root_cause_category as RootCause,
-                   COUNT(*) as Count
+        data = db_fetch("""
+            SELECT root_cause_category as "RootCause",
+                   COUNT(*) as "Count"
             FROM investigations
             WHERE root_cause_category IS NOT NULL
             GROUP BY root_cause_category
-            ORDER BY Count DESC
-        """).fetchall()
+            ORDER BY "Count" DESC
+        """)
         if data:
-            df = pd.DataFrame([dict(r) for r in data])
             fig = px.pie(
-                df,names="RootCause",values="Count",
+                pd.DataFrame(data),
+                names="RootCause",values="Count",
                 title="Claims by Root Cause",
                 color_discrete_sequence=
                     px.colors.qualitative.Set3)
@@ -3197,20 +2986,17 @@ def show_mgmt_dashboard(user):
             st.plotly_chart(fig,
                             use_container_width=True)
 
-    st.markdown("""
-    <div class='section-header'>
-        📅 Monthly Trend</div>
-    """, unsafe_allow_html=True)
-    data = conn.execute("""
-        SELECT strftime('%Y-%m',created_at) as Month,
-               COUNT(*) as Claims
+    data = db_fetch("""
+        SELECT TO_CHAR(created_at,'YYYY-MM') as "Month",
+               COUNT(*) as "Claims"
         FROM claims
-        GROUP BY Month ORDER BY Month
-    """).fetchall()
+        GROUP BY "Month"
+        ORDER BY "Month"
+    """)
     if data:
-        df = pd.DataFrame([dict(r) for r in data])
         fig = px.line(
-            df,x="Month",y="Claims",
+            pd.DataFrame(data),
+            x="Month",y="Claims",
             title="Monthly Claims Trend",
             markers=True,line_shape="spline",
             color_discrete_sequence=["#3b82f6"])
@@ -3223,8 +3009,6 @@ def show_mgmt_dashboard(user):
             font_color="#1e293b",
             title_font_size=14)
         st.plotly_chart(fig,use_container_width=True)
-
-    conn.close()
 
 
 # ══════════════════════════════════════════════════════════
@@ -3243,10 +3027,9 @@ def show_export(user):
     </div>
     """, unsafe_allow_html=True)
 
-    tab1,tab2,tab3 = st.tabs([
+    tab1,tab2 = st.tabs([
         "📋 Claims",
-        "💰 Settlements",
-        "📊 Summary"
+        "💰 Settlements"
     ])
 
     with tab1:
@@ -3269,52 +3052,42 @@ def show_export(user):
                 ["All","Critical","Major","Minor"],
                 key="exp_pri")
 
-        conn  = get_connection()
         query = """
-            SELECT c.ticket_number as 'Ticket',
-                   cu.customer_name as 'Customer',
-                   cu.customer_code as 'Code',
-                   c.submitted_by_name as 'Contact',
-                   c.submitted_by_email as 'Email',
-                   c.submitted_by_mobile as 'Mobile',
-                   p.name as 'Product',
-                   dt.name as 'Defect',
-                   c.invoice_number as 'Invoice',
-                   c.invoice_date as 'Inv Date',
-                   c.quantity_received as 'Qty Recv',
-                   c.quantity_claimed as 'Qty Claimed',
-                   c.quantity_unit as 'Unit',
-                   c.priority as 'Priority',
-                   c.status as 'Status',
-                   c.defect_description as 'Description',
-                   u.full_name as 'Assigned To',
-                   c.created_at as 'Submitted',
-                   c.resolved_at as 'Resolved',
-                   c.sla_resolution_due_at as 'SLA Due'
+            SELECT c.ticket_number as "Ticket",
+                   cu.customer_name as "Customer",
+                   c.submitted_by_name as "Contact",
+                   c.submitted_by_email as "Email",
+                   p.name as "Product",
+                   dt.name as "Defect",
+                   c.invoice_number as "Invoice",
+                   c.quantity_claimed as "Qty Claimed",
+                   c.quantity_unit as "Unit",
+                   c.priority as "Priority",
+                   c.status as "Status",
+                   c.defect_description as "Description",
+                   c.created_at as "Submitted"
             FROM claims c
             JOIN customers cu ON c.customer_id=cu.id
             JOIN products p   ON c.product_id=p.id
             JOIN defect_types dt
                 ON c.defect_type_id=dt.id
-            LEFT JOIN users u ON c.assigned_to_id=u.id
             WHERE 1=1
         """
         params = []
         if exp_status != "All":
-            query += " AND c.status=?"
+            query += " AND c.status=%s"
             params.append(exp_status)
         if exp_prod != "All":
-            query += " AND p.name=?"
+            query += " AND p.name=%s"
             params.append(exp_prod)
         if exp_pri != "All":
-            query += " AND c.priority=?"
+            query += " AND c.priority=%s"
             params.append(exp_pri)
         query += " ORDER BY c.created_at DESC"
-        rows = conn.execute(query,params).fetchall()
-        conn.close()
 
+        rows = db_fetch(query,params)
         if rows:
-            df = pd.DataFrame([dict(r) for r in rows])
+            df = pd.DataFrame(rows)
             st.info(f"📋 {len(df)} claims ready")
             st.dataframe(df.head(10),
                          use_container_width=True,
@@ -3339,22 +3112,18 @@ def show_export(user):
             st.info("No claims found.")
 
     with tab2:
-        conn = get_connection()
-        rows = conn.execute("""
-            SELECT c.ticket_number as 'Ticket',
-                   cu.customer_name as 'Customer',
-                   p.name as 'Product',
-                   s.decision as 'Decision',
-                   s.approved_quantity as 'Approved Qty',
-                   c.quantity_unit as 'Unit',
-                   s.credit_amount as 'Credit (₹)',
-                   s.currency as 'Currency',
-                   s.settlement_status as 'Status',
-                   u1.full_name as 'Submitted By',
-                   s.submitted_at as 'Submitted At',
-                   u2.full_name as 'Approved By',
-                   s.approved_at as 'Approved At',
-                   s.remarks as 'Remarks'
+        rows = db_fetch("""
+            SELECT c.ticket_number as "Ticket",
+                   cu.customer_name as "Customer",
+                   p.name as "Product",
+                   s.decision as "Decision",
+                   s.approved_quantity as "Approved Qty",
+                   s.credit_amount as "Credit (₹)",
+                   s.settlement_status as "Status",
+                   u1.full_name as "Submitted By",
+                   s.submitted_at as "Submitted At",
+                   u2.full_name as "Approved By",
+                   s.approved_at as "Approved At"
             FROM settlements s
             JOIN claims c     ON s.claim_id=c.id
             JOIN customers cu ON c.customer_id=cu.id
@@ -3363,11 +3132,9 @@ def show_export(user):
             LEFT JOIN users u2
                 ON s.approved_by_id=u2.id
             ORDER BY s.submitted_at DESC
-        """).fetchall()
-        conn.close()
-
+        """)
         if rows:
-            df = pd.DataFrame([dict(r) for r in rows])
+            df = pd.DataFrame(rows)
             st.info(f"💰 {len(df)} settlements ready")
             st.dataframe(df.head(10),
                          use_container_width=True,
@@ -3390,78 +3157,6 @@ def show_export(user):
                 use_container_width=True)
         else:
             st.info("No settlements found.")
-
-    with tab3:
-        conn = get_connection()
-        cust_sum = conn.execute("""
-            SELECT cu.customer_name as 'Customer',
-                   COUNT(*) as 'Total',
-                   SUM(CASE WHEN c.priority='Critical'
-                       THEN 1 ELSE 0 END) as 'Critical',
-                   SUM(CASE WHEN c.priority='Major'
-                       THEN 1 ELSE 0 END) as 'Major',
-                   SUM(CASE WHEN c.priority='Minor'
-                       THEN 1 ELSE 0 END) as 'Minor',
-                   SUM(CASE WHEN c.status IN
-                       ('Resolved','Closed')
-                       THEN 1 ELSE 0 END) as 'Closed',
-                   SUM(c.quantity_claimed)
-                       as 'Total Qty'
-            FROM claims c
-            JOIN customers cu ON c.customer_id=cu.id
-            GROUP BY cu.customer_name
-            ORDER BY COUNT(*) DESC
-        """).fetchall()
-        prod_sum = conn.execute("""
-            SELECT p.name as 'Product',
-                   COUNT(*) as 'Total',
-                   SUM(c.quantity_claimed)
-                       as 'Total Qty'
-            FROM claims c
-            JOIN products p ON c.product_id=p.id
-            GROUP BY p.name
-        """).fetchall()
-        conn.close()
-
-        if cust_sum:
-            st.markdown("#### 👥 By Customer")
-            df_c = pd.DataFrame(
-                [dict(r) for r in cust_sum])
-            st.dataframe(df_c,
-                         use_container_width=True,
-                         hide_index=True)
-        if prod_sum:
-            st.markdown("#### 🍋 By Product")
-            df_p = pd.DataFrame(
-                [dict(r) for r in prod_sum])
-            st.dataframe(df_p,
-                         use_container_width=True,
-                         hide_index=True)
-
-        if cust_sum and prod_sum:
-            output = io.BytesIO()
-            with pd.ExcelWriter(
-                output,engine="openpyxl"
-            ) as writer:
-                pd.DataFrame(
-                    [dict(r) for r in cust_sum]
-                ).to_excel(writer,
-                           sheet_name="By Customer",
-                           index=False)
-                pd.DataFrame(
-                    [dict(r) for r in prod_sum]
-                ).to_excel(writer,
-                           sheet_name="By Product",
-                           index=False)
-            output.seek(0)
-            st.download_button(
-                "⬇️ Download Summary Excel",
-                data=output,
-                file_name="FQCMS_Summary.xlsx",
-                mime="application/vnd.openxmlformats-"
-                     "officedocument.spreadsheetml"
-                     ".sheet",
-                use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════
@@ -3493,25 +3188,29 @@ def show_admin(user):
             👥 Manage Users</div>
         """, unsafe_allow_html=True)
 
-        conn  = get_connection()
-        users = conn.execute("""
-            SELECT u.id,u.username,u.full_name,u.email,
-                   u.is_active,r.name as role_name,
+        users = db_fetch("""
+            SELECT u.id,u.username,u.full_name,
+                   u.email,u.is_active,
+                   r.name as role_name,
                    u.last_login_at
             FROM users u
             JOIN roles r ON u.role_id=r.id
             ORDER BY u.id
-        """).fetchall()
-        roles = conn.execute(
-            "SELECT id,name FROM roles ORDER BY id"
-        ).fetchall()
-        conn.close()
-        role_opts = {r["name"]:r["id"] for r in roles}
+        """)
+        roles = db_fetch(
+            "SELECT id,name FROM roles ORDER BY id")
+        role_opts = {
+            r["name"]:r["id"] for r in roles}
 
         for u in users:
             sc = ("#10b981" if u["is_active"]
                   else "#ef4444")
-            sl = "Active" if u["is_active"] else "Disabled"
+            sl = ("Active" if u["is_active"]
+                  else "Disabled")
+            last_login = (
+                str(u["last_login_at"])[:16]
+                if u["last_login_at"] else "Never")
+
             with st.expander(
                 f"👤 {u['full_name']}  |  "
                 f"{u['username']}  |  "
@@ -3532,8 +3231,7 @@ def show_admin(user):
                                 font-weight:600;'>
                             {u["username"]}</td></tr>
                         <tr><td style='color:#64748b;
-                            padding:5px 0;'>
-                            Full Name</td>
+                            padding:5px 0;'>Name</td>
                             <td style='color:#1e293b;'>
                             {u["full_name"]}</td></tr>
                         <tr><td style='color:#64748b;
@@ -3554,9 +3252,7 @@ def show_admin(user):
                             padding:5px 0;'>
                             Last Login</td>
                             <td style='color:#1e293b;'>
-                            {u["last_login_at"][:16]
-                             if u["last_login_at"]
-                             else "Never"}</td></tr>
+                            {last_login}</td></tr>
                         </table>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3580,26 +3276,62 @@ def show_admin(user):
                         if st.form_submit_button(
                             "💾 Save",
                             use_container_width=True):
-                            from datetime import datetime
-                            conn = get_connection()
-                            conn.execute("""
+                            db_execute("""
                                 UPDATE users SET
-                                    role_id=?,
-                                    is_active=?,
-                                    updated_at=?
-                                WHERE id=?
+                                    role_id=%s,
+                                    is_active=%s,
+                                    updated_at=NOW()
+                                WHERE id=%s
                             """, (
                                 role_opts[new_role],
-                                1 if new_active=="Active"
-                                  else 0,
-                                datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"),
+                                new_active=="Active",
                                 u["id"]
                             ))
-                            conn.commit()
-                            conn.close()
                             st.success("✅ Updated!")
                             st.rerun()
+
+                    if u["username"] != "admin":
+                        if st.button(
+                            "🗑️ Delete",
+                            key=f"del_{u['id']}",
+                            use_container_width=True
+                        ):
+                            st.session_state[
+                                f"confirm_{u['id']}"
+                            ] = True
+                        if st.session_state.get(
+                            f"confirm_{u['id']}",False
+                        ):
+                            st.warning(
+                                f"Delete "
+                                f"**{u['full_name']}**?")
+                            cc1,cc2 = st.columns(2)
+                            with cc1:
+                                if st.button(
+                                    "✅ Yes",
+                                    key=f"yes_{u['id']}",
+                                    use_container_width=True
+                                ):
+                                    db_execute(
+                                        "DELETE FROM "
+                                        "users WHERE id=%s",
+                                        (u["id"],))
+                                    st.success(
+                                        "✅ Deleted!")
+                                    st.session_state.pop(
+                                        f"confirm_"
+                                        f"{u['id']}",None)
+                                    st.rerun()
+                            with cc2:
+                                if st.button(
+                                    "❌ No",
+                                    key=f"no_{u['id']}",
+                                    use_container_width=True
+                                ):
+                                    st.session_state.pop(
+                                        f"confirm_"
+                                        f"{u['id']}",None)
+                                    st.rerun()
 
         st.markdown("---")
         st.markdown("""
@@ -3624,7 +3356,8 @@ def show_admin(user):
                 np2 = st.text_input("Confirm *",
                     type="password")
 
-            if st.form_submit_button("➕ Create User",
+            if st.form_submit_button(
+                "➕ Create User",
                 use_container_width=True):
                 errors = []
                 if not nu.strip():
@@ -3636,7 +3369,8 @@ def show_admin(user):
                 if not np or len(np)<6:
                     errors.append("Min 6 char password.")
                 if np != np2:
-                    errors.append("Passwords don't match.")
+                    errors.append(
+                        "Passwords don't match.")
                 if errors:
                     for e in errors:
                         st.error(f"❌ {e}")
@@ -3647,22 +3381,15 @@ def show_admin(user):
                         bcrypt.gensalt()
                     ).decode()
                     try:
-                        from datetime import datetime
-                        now = datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S")
-                        conn = get_connection()
-                        conn.execute("""
-                            INSERT INTO users (
+                        db_execute("""
+                            INSERT INTO users(
                                 username,email,
-                                password_hash,full_name,
-                                role_id,created_at,
-                                updated_at
-                            ) VALUES (?,?,?,?,?,?,?)
+                                password_hash,
+                                full_name,role_id)
+                            VALUES(%s,%s,%s,%s,%s)
                         """, (nu.strip(),ne.strip(),
                               hashed,nfn.strip(),
-                              role_opts[nr],now,now))
-                        conn.commit()
-                        conn.close()
+                              role_opts[nr]))
                         st.success(
                             f"✅ User {nu} created!")
                         st.rerun()
@@ -3675,19 +3402,18 @@ def show_admin(user):
             🏢 Customer Management</div>
         """, unsafe_allow_html=True)
 
-        conn  = get_connection()
-        custs = conn.execute("""
+        custs = db_fetch("""
             SELECT id,customer_code,customer_name,
                    contact_person,email,mobile,
                    city,is_active
             FROM customers ORDER BY customer_name
-        """).fetchall()
-        conn.close()
+        """)
 
         for c in custs:
             sc = ("#10b981" if c["is_active"]
                   else "#ef4444")
-            sl = "Active" if c["is_active"] else "Inactive"
+            sl = ("Active" if c["is_active"]
+                  else "Inactive")
             with st.expander(
                 f"🏢 {c['customer_code']}  |  "
                 f"{c['customer_name']}  |  {sl}"
@@ -3723,10 +3449,6 @@ def show_admin(user):
                             padding:5px 0;'>Mobile</td>
                             <td style='color:#1e293b;'>
                             {c["mobile"]}</td></tr>
-                        <tr><td style='color:#64748b;
-                            padding:5px 0;'>City</td>
-                            <td style='color:#1e293b;'>
-                            {c["city"] or "—"}</td></tr>
                         </table>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3743,17 +3465,11 @@ def show_admin(user):
                         if st.form_submit_button(
                             "💾 Save",
                             use_container_width=True):
-                            conn = get_connection()
-                            conn.execute("""
+                            db_execute("""
                                 UPDATE customers SET
-                                    is_active=?
-                                WHERE id=?
-                            """, (
-                                1 if na=="Active" else 0,
-                                c["id"]
-                            ))
-                            conn.commit()
-                            conn.close()
+                                    is_active=%s
+                                WHERE id=%s
+                            """, (na=="Active",c["id"]))
                             st.success("✅ Updated!")
                             st.rerun()
 
@@ -3767,7 +3483,8 @@ def show_admin(user):
             cc1,cc2 = st.columns(2)
             with cc1:
                 c_code    = st.text_input(
-                    "Code *",placeholder="CUST-006")
+                    "Code *",
+                    placeholder="CUST-006")
                 c_name    = st.text_input(
                     "Company *",
                     placeholder="Company name")
@@ -3803,27 +3520,19 @@ def show_admin(user):
                         st.error(f"❌ {e}")
                 else:
                     try:
-                        from datetime import datetime
-                        now = datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S")
-                        conn = get_connection()
-                        conn.execute("""
-                            INSERT INTO customers (
+                        db_execute("""
+                            INSERT INTO customers(
                                 customer_code,
                                 customer_name,
                                 contact_person,
-                                email,mobile,city,
-                                created_at,updated_at
-                            ) VALUES (?,?,?,?,?,?,?,?)
+                                email,mobile,city)
+                            VALUES(%s,%s,%s,%s,%s,%s)
                         """, (c_code.strip(),
                               c_name.strip(),
                               c_contact.strip(),
                               c_email.strip(),
                               c_mobile.strip(),
-                              c_city.strip(),
-                              now,now))
-                        conn.commit()
-                        conn.close()
+                              c_city.strip()))
                         st.success(
                             f"✅ {c_name} added!")
                         st.rerun()
@@ -3836,21 +3545,15 @@ def show_admin(user):
             🍋 Products & Defects</div>
         """, unsafe_allow_html=True)
 
-        conn  = get_connection()
-        prods = conn.execute(
-            "SELECT id,name FROM products ORDER BY name"
-        ).fetchall()
-        conn.close()
+        prods = db_fetch(
+            "SELECT id,name FROM products "
+            "ORDER BY name")
 
         for p in prods:
-            conn = get_connection()
-            defs = conn.execute(
+            defs = db_fetch(
                 "SELECT id,name,is_active FROM "
-                "defect_types WHERE product_id=? "
-                "ORDER BY name",(p["id"],)
-            ).fetchall()
-            conn.close()
-
+                "defect_types WHERE product_id=%s "
+                "ORDER BY name", (p["id"],))
             st.markdown(f"""
             <div style='background:#ffffff;
                 border:1px solid #e2e8f0;
@@ -3879,25 +3582,24 @@ def show_admin(user):
                          else "○ Disabled"}</span>
                 </div>
                 """, unsafe_allow_html=True)
-            st.markdown("</div>",unsafe_allow_html=True)
+            st.markdown("</div>",
+                        unsafe_allow_html=True)
 
-            with st.form(f"add_defect_{p['id']}"):
+            with st.form(f"add_def_{p['id']}"):
                 nd = st.text_input(
                     f"Add defect for {p['name']}",
                     placeholder="New defect name",
                     key=f"nd_{p['id']}")
                 if st.form_submit_button(
-                    "➕ Add",use_container_width=True):
+                    "➕ Add",
+                    use_container_width=True):
                     if nd.strip():
                         try:
-                            conn = get_connection()
-                            conn.execute("""
+                            db_execute("""
                                 INSERT INTO defect_types
                                 (product_id,name)
-                                VALUES (?,?)
+                                VALUES(%s,%s)
                             """, (p["id"],nd.strip()))
-                            conn.commit()
-                            conn.close()
                             st.success("✅ Added!")
                             st.rerun()
                         except Exception as e:
@@ -3909,12 +3611,9 @@ def show_admin(user):
             🔑 Change Password</div>
         """, unsafe_allow_html=True)
 
-        conn  = get_connection()
-        users = conn.execute(
+        users = db_fetch(
             "SELECT id,username,full_name FROM users "
-            "WHERE is_active=1 ORDER BY full_name"
-        ).fetchall()
-        conn.close()
+            "WHERE is_active=TRUE ORDER BY full_name")
         user_opts = {
             f"{u['full_name']} ({u['username']})":
             u["id"] for u in users
@@ -3928,7 +3627,7 @@ def show_admin(user):
                 "New Password *",type="password",
                 placeholder="Min 6 characters")
             new_pwd2 = st.text_input(
-                "Confirm Password *",type="password")
+                "Confirm *",type="password")
 
             if st.form_submit_button(
                 "🔑 Change Password",
@@ -3936,29 +3635,23 @@ def show_admin(user):
                 if not new_pwd or len(new_pwd)<6:
                     st.error("❌ Min 6 characters.")
                 elif new_pwd != new_pwd2:
-                    st.error("❌ Passwords don't match.")
+                    st.error(
+                        "❌ Passwords don't match.")
                 else:
                     import bcrypt
                     hashed = bcrypt.hashpw(
                         new_pwd.encode(),
                         bcrypt.gensalt()
                     ).decode()
-                    from datetime import datetime
-                    conn = get_connection()
-                    conn.execute("""
+                    db_execute("""
                         UPDATE users SET
-                            password_hash=?,
-                            updated_at=?
-                        WHERE id=?
+                            password_hash=%s,
+                            updated_at=NOW()
+                        WHERE id=%s
                     """, (hashed,
-                          datetime.now().strftime(
-                              "%Y-%m-%d %H:%M:%S"),
                           user_opts[sel_user]))
-                    conn.commit()
-                    conn.close()
                     st.success(
-                        f"✅ Password changed for "
-                        f"{sel_user}!")
+                        f"✅ Password changed!")
 
 
 # ══════════════════════════════════════════════════════════
@@ -3991,7 +3684,8 @@ def show_login_page():
                 "Sign In →",
                 use_container_width=True)
             if submit:
-                user,error = login_user(username,password)
+                user,error = login_user(
+                    username,password)
                 if user:
                     st.session_state.logged_in    = True
                     st.session_state.user         = user
