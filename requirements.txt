@@ -5,3 +5,4 @@ pandas
 cloudinary
 Pillow
 openpyxl
+psycopg2-binary
