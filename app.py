@@ -3449,7 +3449,19 @@ def show_export(user):
         "📊 Summary"
     ])
 
-    with tab1:
+   with tab1:
+        st.markdown("""
+        <div style='background:#eff6ff;
+            border:1px solid #bfdbfe;
+            border-radius:8px;padding:12px;
+            margin-bottom:16px;'>
+            <span style='color:#1d4ed8;
+                font-weight:600;'>
+                📋 Claims export includes
+                investigation summary
+                when available</span>
+        </div>
+        """, unsafe_allow_html=True)
         ec1,ec2,ec3 = st.columns(3)
         with ec1:
             exp_status = st.selectbox(
