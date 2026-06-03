@@ -1968,19 +1968,12 @@ def show_investigations(user):
                     value=inv["preventive_action"]
                     if inv else "",height=80)
 
-           ci1,ci2 = st.columns(2)
-                with ci1:
-                    ci1,ci2 = st.columns(2)
-            with ci1:
-                save_inv = st.form_submit_button(
-                    "💾 Save Investigation",
-                    use_container_width=True)
-            with ci2:
-                email_inv = st.form_submit_button(
-                    "📧 Email to Manager",
-                    use_container_width=True)
-            if save_inv or email_inv:
+            save_inv = st.form_submit_button(
+                "💾 Save Investigation",
+                use_container_width=True)
+            if save_inv:
                 if root_cause == "Select Root Cause":
+                    st.error("❌ Select root cause.")
                 elif not root_details.strip():
                     st.error("❌ Details required.")
                 elif not findings.strip():
@@ -2056,200 +2049,6 @@ def show_investigations(user):
                     conn.commit()
                     conn.close()
                     st.success("✅ Investigation saved!")
-                    if email_inv:
-                        conn_m = get_connection()
-                        managers = conn_m.execute("""
-                            SELECT u.email,u.full_name
-                            FROM users u
-                            JOIN roles r
-                                ON u.role_id=r.id
-                            WHERE r.name IN
-                            ('Quality Manager','Admin')
-                            AND u.is_active=1
-                        """).fetchall()
-                        conn_m.close()
-                        conn_n = get_connection()
-                        notes = conn_n.execute("""
-                            SELECT n.note,n.created_at,
-                                   u.full_name
-                            FROM internal_notes n
-                            JOIN users u
-                                ON n.author_id=u.id
-                            WHERE n.claim_id=?
-                            AND n.is_internal=1
-                            ORDER BY n.created_at DESC
-                        """, (claim_id,)).fetchall()
-                        conn_n.close()
-                        notes_html = "".join([
-                            f"<tr>"
-                            f"<td style='padding:8px;"
-                            f"color:#64748b;border-bottom:"
-                            f"1px solid #e2e8f0;'>"
-                            f"{str(n['created_at'])[:16]}"
-                            f"</td>"
-                            f"<td style='padding:8px;"
-                            f"color:#1e293b;border-bottom:"
-                            f"1px solid #e2e8f0;'>"
-                            f"{n['full_name']}</td>"
-                            f"<td style='padding:8px;"
-                            f"color:#1e293b;border-bottom:"
-                            f"1px solid #e2e8f0;'>"
-                            f"{n['note']}</td></tr>"
-                            for n in notes
-                        ]) if notes else (
-                            "<tr><td colspan='3' "
-                            "style='padding:8px;"
-                            "color:#64748b;'>"
-                            "No internal notes yet."
-                            "</td></tr>")
-                        html = f"""<!DOCTYPE html>
-<html><body style="font-family:Arial;
-background:#f4f4f4;padding:20px;">
-<div style="max-width:700px;margin:0 auto;
-background:#fff;border-radius:12px;
-overflow:hidden;">
-<div style="background:linear-gradient(
-135deg,#1e293b,#334155);
-padding:30px;text-align:center;">
-<div style="font-size:36px;">🍋</div>
-<h1 style="color:#fff;margin:8px 0;
-font-size:20px;">
-FQCMS — Investigation Report</h1></div>
-<div style="padding:32px;">
-<h2 style="color:#1e293b;">
-🔬 {claim["ticket_number"]}</h2>
-<table style="width:100%;
-border-collapse:collapse;margin-bottom:20px;">
-<tr><td style="padding:8px;color:#64748b;
-width:35%;border-bottom:1px solid #e2e8f0;">
-Customer</td>
-<td style="padding:8px;color:#1e293b;
-font-weight:600;border-bottom:1px solid #e2e8f0;">
-{claim["customer_name"]}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">Product</td>
-<td style="padding:8px;color:#1e293b;
-border-bottom:1px solid #e2e8f0;">
-{claim["product_name"]}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">Defect</td>
-<td style="padding:8px;color:#1e293b;
-border-bottom:1px solid #e2e8f0;">
-{claim["defect_name"]}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">Priority</td>
-<td style="padding:8px;color:#ef4444;
-font-weight:700;
-border-bottom:1px solid #e2e8f0;">
-{claim["priority"]}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">
-Qty Claimed</td>
-<td style="padding:8px;color:#1e293b;
-border-bottom:1px solid #e2e8f0;">
-{claim["quantity_claimed"]}
-{claim["quantity_unit"]}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">
-Root Cause</td>
-<td style="padding:8px;color:#1e293b;
-font-weight:600;
-border-bottom:1px solid #e2e8f0;">
-{root_cause}</td></tr>
-<tr><td style="padding:8px;color:#64748b;
-border-bottom:1px solid #e2e8f0;">
-Inspector</td>
-<td style="padding:8px;color:#1e293b;
-border-bottom:1px solid #e2e8f0;">
-{inspector.strip() or "—"}</td></tr>
-<tr><td style="padding:8px;color:#64748b;">
-Lab Ref</td>
-<td style="padding:8px;color:#1e293b;">
-{lab_ref.strip() or "—"}</td></tr>
-</table>
-<div style="background:#f8fafc;
-border-radius:8px;padding:16px;
-margin-bottom:16px;">
-<div style="color:#64748b;font-size:11px;
-font-weight:600;text-transform:uppercase;
-margin-bottom:6px;">ROOT CAUSE DETAILS</div>
-<div style="color:#1e293b;font-size:13px;
-line-height:1.6;">
-{root_details.strip() or "—"}</div></div>
-<div style="background:#f8fafc;
-border-radius:8px;padding:16px;
-margin-bottom:16px;">
-<div style="color:#64748b;font-size:11px;
-font-weight:600;text-transform:uppercase;
-margin-bottom:6px;">FINDINGS</div>
-<div style="color:#1e293b;font-size:13px;
-line-height:1.6;">
-{findings.strip() or "—"}</div></div>
-<div style="background:#f8fafc;
-border-radius:8px;padding:16px;
-margin-bottom:16px;">
-<div style="color:#64748b;font-size:11px;
-font-weight:600;text-transform:uppercase;
-margin-bottom:6px;">CORRECTIVE ACTION</div>
-<div style="color:#1e293b;font-size:13px;
-line-height:1.6;">
-{corrective.strip() or "—"}</div></div>
-<div style="background:#f8fafc;
-border-radius:8px;padding:16px;
-margin-bottom:24px;">
-<div style="color:#64748b;font-size:11px;
-font-weight:600;text-transform:uppercase;
-margin-bottom:6px;">PREVENTIVE ACTION</div>
-<div style="color:#1e293b;font-size:13px;
-line-height:1.6;">
-{preventive.strip() or "—"}</div></div>
-<h3 style="color:#1e293b;margin-bottom:12px;">
-📝 Internal Notes</h3>
-<table style="width:100%;
-border-collapse:collapse;margin-bottom:20px;">
-<tr>
-<th style="padding:8px;background:#f1f5f9;
-color:#475569;font-size:12px;text-align:left;">
-Time</th>
-<th style="padding:8px;background:#f1f5f9;
-color:#475569;font-size:12px;text-align:left;">
-By</th>
-<th style="padding:8px;background:#f1f5f9;
-color:#475569;font-size:12px;text-align:left;">
-Note</th>
-</tr>
-{notes_html}
-</table>
-<div style="background:#fffbeb;
-border:1px solid #fcd34d;
-border-radius:8px;padding:12px;
-color:#92400e;font-size:12px;">
-⚠️ Confidential — Internal use only.
-</div></div>
-<div style="background:#f8fafc;padding:16px;
-text-align:center;border-top:1px solid #e2e8f0;">
-<p style="color:#94a3b8;font-size:12px;margin:0;">
-Sent by {user["full_name"]} via FQCMS
-</p></div>
-</div></body></html>"""
-                        sent = 0
-                        for mgr in managers:
-                            ok = send_email_base(
-                                mgr["email"],
-                                f"🔬 Investigation — "
-                                f"{claim['ticket_number']}"
-                                f" | FQCMS",
-                                html)
-                            if ok:
-                                sent += 1
-                        if sent > 0:
-                            st.success(
-                                f"📧 Report emailed "
-                                f"to {sent} manager(s)!")
-                        else:
-                            st.warning(
-                                "⚠️ Email failed. "
-                                "Check Gmail settings.")
                     st.rerun()
 
     # ── TAB 4: TEAM DISCUSSION (NEW!) ────────────────────
@@ -3450,19 +3249,7 @@ def show_export(user):
         "📊 Summary"
     ])
 
-   with tab1:
-        st.markdown("""
-        <div style='background:#eff6ff;
-            border:1px solid #bfdbfe;
-            border-radius:8px;padding:12px;
-            margin-bottom:16px;'>
-            <span style='color:#1d4ed8;
-                font-weight:600;'>
-                📋 Claims export includes
-                investigation summary
-                when available</span>
-        </div>
-        """, unsafe_allow_html=True)
+    with tab1:
         ec1,ec2,ec3 = st.columns(3)
         with ec1:
             exp_status = st.selectbox(
@@ -3483,7 +3270,7 @@ def show_export(user):
                 key="exp_pri")
 
         conn  = get_connection()
-       query = """
+        query = """
             SELECT c.ticket_number as 'Ticket',
                    cu.customer_name as 'Customer',
                    cu.customer_code as 'Code',
@@ -3503,23 +3290,13 @@ def show_export(user):
                    u.full_name as 'Assigned To',
                    c.created_at as 'Submitted',
                    c.resolved_at as 'Resolved',
-                   c.sla_resolution_due_at as 'SLA Due',
-                   i.root_cause_category as 'Root Cause',
-                   i.root_cause_details as 'Root Cause Details',
-                   i.findings as 'Findings',
-                   i.corrective_action as 'Corrective Action',
-                   i.preventive_action as 'Preventive Action',
-                   i.inspector_name as 'Inspector',
-                   i.inspection_date as 'Inspection Date',
-                   i.lab_report_ref as 'Lab Ref'
+                   c.sla_resolution_due_at as 'SLA Due'
             FROM claims c
             JOIN customers cu ON c.customer_id=cu.id
             JOIN products p   ON c.product_id=p.id
             JOIN defect_types dt
                 ON c.defect_type_id=dt.id
             LEFT JOIN users u ON c.assigned_to_id=u.id
-            LEFT JOIN investigations i
-                ON c.id=i.claim_id
             WHERE 1=1
         """
         params = []
